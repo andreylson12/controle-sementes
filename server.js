@@ -1,6 +1,8 @@
+
 import express from "express";
 import cors from "cors";
-import { JSONFileSync, LowSync } from "lowdb/node";
+import { LowSync } from "lowdb";
+import { JSONFileSync } from "lowdb/node";
 import { customAlphabet } from "nanoid";
 import { z } from "zod";
 import path from "path";
@@ -34,7 +36,7 @@ const treatmentSchema = z.object({ lot_id:z.string().min(1), product:z.string().
 const movementSchema = z.object({ lot_id:z.string().min(1), destination_type:z.enum(["lavoura","fazenda"]), destination_name:z.string().min(1), unit:z.enum(["kg","sc","bag"]), qty:z.number().positive(), moved_at:z.string().min(1), notes:z.string().optional() });
 const settingsSchema = z.object({ units:z.object({ kg_per_sc:z.number().positive(), kg_per_bag:z.number().positive() }) });
 
-app.get("/api/status", (_req,res)=>res.json({ok:true,version:"1.0.1"}));
+app.get("/api/status", (_req,res)=>res.json({ok:true,version:"1.0.2"}));
 app.get("/api/settings", (_req,res)=>res.json(currentSettings()));
 app.put("/api/settings", (req,res)=>{ const p=settingsSchema.safeParse(req.body); if(!p.success) return res.status(400).json(p.error); db.read(); db.data.settings=p.data; db.write(); res.json(db.data.settings); });
 
