@@ -44,6 +44,7 @@
           <tr>
             <th>Variedade</th><th>Fornecedor</th><th>Lote</th>
             <th>Recebido</th><th>Qtd (unidade)</th><th>Saldo (kg)</th><th>ID</th>
+            <th>Ações</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -62,7 +63,6 @@
           <label>Operador <input name="operator" required /></label>
           <label>Data <input type="date" name="treated_at" required /></label>
 
-          <!-- 👇 campos novos para TRATAMENTO PARCIAL -->
           <label>Unidade tratada
             <select name="unit">
               <option value="kg">kg</option>
@@ -85,6 +85,7 @@
           <tr>
             <th>Lote</th><th>Produto</th><th>Qtd tratada (kg)</th>
             <th>Dose/100kg</th><th>Operador</th><th>Data</th><th>Obs</th>
+            <th>Ações</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -120,7 +121,7 @@
       </form>
       <h3>Movimentações</h3>
       <table id="tblMov">
-        <thead><tr><th>Lote</th><th>Destino</th><th>Qtd (unid)</th><th>Qtd (kg)</th><th>Data</th><th>Obs</th></tr></thead>
+        <thead><tr><th>Lote</th><th>Destino</th><th>Qtd (unid)</th><th>Qtd (kg)</th><th>Data</th><th>Obs</th><th>Ações</th></tr></thead>
         <tbody></tbody>
       </table>
     </section>
@@ -145,10 +146,7 @@
     </section>
   </main>
 
-  <footer>
-    <small>Sistema simples para Railway/GitHub • v1.2.0</small>
-  </footer>
-
+  <footer><small>Sistema simples para Railway/GitHub • v1.3.0</small></footer>
   <script src="script.js"></script>
 </body>
 </html>
