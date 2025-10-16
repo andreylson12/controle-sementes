@@ -1,4 +1,3 @@
-
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -12,47 +11,49 @@ $$(".tab-btn").forEach(btn => {
   });
 });
 
-async function api(path, options={}) {
+async function api(path, options = {}) {
   const res = await fetch(path, {
-    headers: { "Content-Type":"application/json" },
+    headers: { "Content-Type": "application/json" },
     ...options
   });
-  if (!res.ok) {
-    const msg = await res.text();
-    throw new Error(msg || "Erro na API");
-  }
+  if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
-
 function fmt(n) { return Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 2 }); }
 
-// Load data
+// índice local para mostrar nome do lote no lugar do ID
+let LOT_INDEX = {}; // id -> "Variedade • Código"
+const lotLabel = (l) => `${l.variety} • ${l.lot_code}`;
+
+// ----- LOADERS -----
 async function loadLotes() {
   const data = await api("/api/seed-lots");
+  LOT_INDEX = {};
   const tb = $("#tblLotes tbody");
   tb.innerHTML = "";
   data.forEach(l => {
+    LOT_INDEX[l.id] = lotLabel(l);
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${l.variety}</td>
+    tr.innerHTML = `
+      <td>${l.variety}</td>
       <td>${l.supplier}</td>
       <td>${l.lot_code}</td>
       <td>${new Date(l.received_at).toLocaleDateString()}</td>
       <td>${fmt(l.qty)} ${l.unit}</td>
       <td>${fmt(l.balance_kg)} kg</td>
-      <td>${l.treated ? "Sim" : "Não"}</td>
       <td>${l.id}</td>`;
     tb.appendChild(tr);
   });
+
   // selects
-  const treatedLots = data; // permitir selecionar todos, mas bloqueio ocorre na API ao mover
   const selT = $("#selLotTrat");
   const selM = $("#selLotMov");
   selT.innerHTML = "";
   selM.innerHTML = "";
-  treatedLots.forEach(l => {
+  data.forEach(l => {
     const opt = document.createElement("option");
     opt.value = l.id;
-    opt.textContent = `${l.variety} • ${l.lot_code} • saldo ${fmt(l.balance_kg)} kg`;
+    opt.textContent = `${lotLabel(l)} • saldo ${fmt(l.balance_kg)} kg`;
     selT.appendChild(opt.cloneNode(true));
     selM.appendChild(opt);
   });
@@ -63,10 +64,13 @@ async function loadTrat() {
   const tb = $("#tblTrat tbody");
   tb.innerHTML = "";
   data.forEach(t => {
+    const name = t.lot_name || LOT_INDEX[t.lot_id] || t.lot_id;
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${t.lot_id}</td>
+    tr.innerHTML = `
+      <td>${name}</td>
       <td>${t.product}</td>
-      <td>${fmt(t.dose_per_100kg)}</td>
+      <td>${fmt(t.qty_kg || 0)} kg</td>
+      <td>${fmt(t.dose_per_100kg || 0)}</td>
       <td>${t.operator}</td>
       <td>${new Date(t.treated_at).toLocaleDateString()}</td>
       <td>${t.notes || ""}</td>`;
@@ -79,8 +83,10 @@ async function loadMov() {
   const tb = $("#tblMov tbody");
   tb.innerHTML = "";
   data.forEach(m => {
+    const name = LOT_INDEX[m.lot_id] || m.lot_id;
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${m.lot_id}</td>
+    tr.innerHTML = `
+      <td>${name}</td>
       <td>${m.destination_type}: ${m.destination_name}</td>
       <td>${fmt(m.qty)} ${m.unit}</td>
       <td>${fmt(m.qty_kg)} kg</td>
@@ -111,7 +117,7 @@ async function loadCfg() {
   form.kg_per_bag.value = s.units.kg_per_bag;
 }
 
-// Forms
+// ----- FORMS -----
 $("#formLote").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
@@ -121,16 +127,12 @@ $("#formLote").addEventListener("submit", async (e) => {
     lot_code: fd.get("lot_code"),
     unit: fd.get("unit"),
     qty: Number(fd.get("qty")),
-    received_at: fd.get("received_at")
+    received_at: fd.get("received_at"),
   };
-  try {
-    await api("/api/seed-lots", { method:"POST", body: JSON.stringify(payload) });
-    e.target.reset();
-    await loadLotes();
-    alert("Lote salvo!");
-  } catch (err) {
-    alert(err.message);
-  }
+  await api("/api/seed-lots", { method: "POST", body: JSON.stringify(payload) });
+  e.target.reset();
+  await loadLotes();
+  alert("Lote salvo!");
 });
 
 $("#formTrat").addEventListener("submit", async (e) => {
@@ -142,17 +144,15 @@ $("#formTrat").addEventListener("submit", async (e) => {
     dose_per_100kg: Number(fd.get("dose_per_100kg") || 0),
     operator: fd.get("operator"),
     treated_at: fd.get("treated_at"),
-    notes: fd.get("notes")
+    unit: fd.get("unit"),                 // 👈 novo
+    qty: Number(fd.get("qty")),           // 👈 novo
+    notes: fd.get("notes"),
   };
-  try {
-    await api("/api/treatments", { method:"POST", body: JSON.stringify(payload) });
-    e.target.reset();
-    await loadTrat();
-    await loadLotes();
-    alert("Tratamento registrado!");
-  } catch (err) {
-    alert(err.message);
-  }
+  await api("/api/treatments", { method: "POST", body: JSON.stringify(payload) });
+  e.target.reset();
+  await loadTrat();
+  await loadLotes(); // atualiza saldos
+  alert("Tratamento registrado!");
 });
 
 $("#formMov").addEventListener("submit", async (e) => {
@@ -165,10 +165,10 @@ $("#formMov").addEventListener("submit", async (e) => {
     unit: fd.get("unit"),
     qty: Number(fd.get("qty")),
     moved_at: fd.get("moved_at"),
-    notes: fd.get("notes")
+    notes: fd.get("notes"),
   };
   try {
-    await api("/api/movements", { method:"POST", body: JSON.stringify(payload) });
+    await api("/api/movements", { method: "POST", body: JSON.stringify(payload) });
     e.target.reset();
     await loadMov();
     await loadLotes();
@@ -178,7 +178,7 @@ $("#formMov").addEventListener("submit", async (e) => {
     try {
       const j = JSON.parse(err.message);
       alert(j.message || err.message);
-    } catch (_e) {
+    } catch {
       alert(err.message);
     }
   }
@@ -190,20 +190,16 @@ $("#formCfg").addEventListener("submit", async (e) => {
   const payload = {
     units: {
       kg_per_sc: Number(fd.get("kg_per_sc")),
-      kg_per_bag: Number(fd.get("kg_per_bag"))
-    }
+      kg_per_bag: Number(fd.get("kg_per_bag")),
+    },
   };
-  try {
-    await api("/api/settings", { method:"PUT", body: JSON.stringify(payload) });
-    await Promise.all([loadLotes(), loadEstoque()]);
-    alert("Configurações salvas!");
-  } catch (err) {
-    alert(err.message);
-  }
+  await api("/api/settings", { method: "PUT", body: JSON.stringify(payload) });
+  await Promise.all([loadLotes(), loadEstoque()]);
+  alert("Configurações salvas!");
 });
 
 // Init
-(async function init(){
+(async function init() {
   await loadCfg();
   await loadLotes();
   await loadTrat();
