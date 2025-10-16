@@ -1,4 +1,3 @@
-
 import express from "express";
 import cors from "cors";
 import { LowSync } from "lowdb";
@@ -37,7 +36,7 @@ const treatmentSchema = z.object({ lot_id:z.string().min(1), product:z.string().
 const movementSchema = z.object({ lot_id:z.string().min(1), destination_type:z.enum(["lavoura","fazenda"]), destination_name:z.string().min(1), unit:z.enum(["kg","sc","bag"]), qty:z.number().positive(), moved_at:z.string().min(1), notes:z.string().optional() });
 const settingsSchema = z.object({ units:z.object({ kg_per_sc:z.number().positive(), kg_per_bag:z.number().positive() }) });
 
-app.get("/api/status", (_req,res)=>res.json({ok:true,version:"1.3.0"}));
+app.get("/api/status", (_req,res)=>res.json({ok:true,version:"1.4.1"}));
 app.get("/api/settings", (_req,res)=>res.json(currentSettings()));
 app.put("/api/settings", (req,res)=>{ const p=settingsSchema.safeParse(req.body); if(!p.success) return res.status(400).json(p.error); db.read(); db.data.settings=p.data; db.write(); res.json(db.data.settings); });
 
@@ -236,6 +235,7 @@ app.delete("/api/movements/:id", (req, res) => {
 });
 
 app.get("/api/inventory", (_req,res)=>{
+  // (Mantido o agregado por variedade caso queira usar depois)
   const s=currentSettings(); db.read(); const byVariety={};
   for(const lot of db.data.seed_lots){ const used=usedKgInMovements(lot.id); const bal=Math.max(0,(lot.qty_kg||0)-used); byVariety[lot.variety]=(byVariety[lot.variety]||0)+bal; }
   const result=Object.entries(byVariety).map(([variety,kg])=>({ variety, kg, sc:kg/(s.units.kg_per_sc||60), bag:kg/(s.units.kg_per_bag||1000) }));
