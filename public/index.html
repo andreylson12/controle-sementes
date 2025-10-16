@@ -1,130 +1,208 @@
-<!doctype html>
-<html lang="pt-br">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Controle de Sementes - Fazenda</title>
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-  <header>
-    <h1>Controle de Sementes</h1>
-    <nav>
-      <button class="tab-btn" data-tab="cadastro">Cadastro de Lotes</button>
-      <button class="tab-btn" data-tab="tratamento">Tratamento</button>
-      <button class="tab-btn" data-tab="saida">Saída / Envio</button>
-      <button class="tab-btn" data-tab="estoque">Estoque</button>
-      <button class="tab-btn" data-tab="config">Configurações</button>
-    </nav>
-  </header>
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-  <main>
-    <section id="cadastro" class="tab active">
-      <h2>Novo Lote</h2>
-      <form id="formLote">
-        <div class="grid">
-          <label>Variedade <input name="variety" required /></label>
-          <label>Fornecedor <input name="supplier" required /></label>
-          <label>Código do Lote <input name="lot_code" required /></label>
-          <label>Data Recebimento <input type="date" name="received_at" required /></label>
-          <label>Unidade
-            <select name="unit">
-              <option value="kg">kg</option>
-              <option value="sc">sc</option>
-              <option value="bag">bag</option>
-            </select>
-          </label>
-          <label>Quantidade <input type="number" step="0.01" name="qty" required /></label>
-        </div>
-        <button>Salvar Lote</button>
-      </form>
-      <h3>Lotes cadastrados</h3>
-      <table id="tblLotes">
-        <thead><tr><th>Variedade</th><th>Fornecedor</th><th>Lote</th><th>Recebido</th><th>Qtd (unidade)</th><th>Saldo (kg)</th><th>Tratado?</th><th>ID</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </section>
+// Tabs
+$$(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    $$(".tab-btn").forEach(b => b.classList.remove("active"));
+    $$(".tab").forEach(t => t.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.tab).classList.add("active");
+  });
+});
 
-    <section id="tratamento" class="tab">
-      <h2>Registrar Tratamento</h2>
-      <form id="formTrat">
-        <div class="grid">
-          <label>Lote
-            <select name="lot_id" id="selLotTrat"></select>
-          </label>
-          <label>Produto <input name="product" required /></label>
-          <label>Dose por 100kg <input type="number" step="0.01" name="dose_per_100kg" value="0" /></label>
-          <label>Operador <input name="operator" required /></label>
-          <label>Data <input type="date" name="treated_at" required /></label>
-          <label>Observações <input name="notes" /></label>
-        </div>
-        <button>Salvar Tratamento</button>
-      </form>
-      <h3>Tratamentos</h3>
-      <table id="tblTrat">
-        <thead><tr><th>Lote</th><th>Produto</th><th>Dose/100kg</th><th>Operador</th><th>Data</th><th>Obs</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </section>
+async function api(path, options = {}) {
+  const res = await fetch(path, {
+    headers: { "Content-Type": "application/json" },
+    ...options
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+function fmt(n) { return Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 2 }); }
 
-    <section id="saida" class="tab">
-      <h2>Saída / Envio</h2>
-      <form id="formMov">
-        <div class="grid">
-          <label>Lote
-            <select name="lot_id" id="selLotMov"></select>
-          </label>
-          <label>Destino (lavoura ou fazenda)
-            <select name="destination_type">
-              <option value="lavoura">lavoura</option>
-              <option value="fazenda">fazenda</option>
-            </select>
-          </label>
-          <label>Nome do Destino <input name="destination_name" required /></label>
-          <label>Unidade
-            <select name="unit">
-              <option value="kg">kg</option>
-              <option value="sc">sc</option>
-              <option value="bag">bag</option>
-            </select>
-          </label>
-          <label>Quantidade <input type="number" step="0.01" name="qty" required /></label>
-          <label>Data <input type="date" name="moved_at" required /></label>
-          <label>Observações <input name="notes" /></label>
-        </div>
-        <button>Registrar Saída</button>
-      </form>
-      <h3>Movimentações</h3>
-      <table id="tblMov">
-        <thead><tr><th>Lote</th><th>Destino</th><th>Qtd (unid)</th><th>Qtd (kg)</th><th>Data</th><th>Obs</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </section>
+// índice local para mostrar nome do lote no lugar do ID
+let LOT_INDEX = {}; // id -> "Variedade • Código"
+const lotLabel = (l) => `${l.variety} • ${l.lot_code}`;
 
-    <section id="estoque" class="tab">
-      <h2>Estoque por Variedade</h2>
-      <table id="tblEstoque">
-        <thead><tr><th>Variedade</th><th>kg</th><th>sc</th><th>bag</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </section>
+// ----- LOADERS -----
+async function loadLotes() {
+  const data = await api("/api/seed-lots");
+  LOT_INDEX = {};
+  const tb = $("#tblLotes tbody");
+  tb.innerHTML = "";
+  data.forEach(l => {
+    LOT_INDEX[l.id] = lotLabel(l);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${l.variety}</td>
+      <td>${l.supplier}</td>
+      <td>${l.lot_code}</td>
+      <td>${new Date(l.received_at).toLocaleDateString()}</td>
+      <td>${fmt(l.qty)} ${l.unit}</td>
+      <td>${fmt(l.balance_kg)} kg</td>
+      <td>${l.id}</td>`;
+    tb.appendChild(tr);
+  });
 
-    <section id="config" class="tab">
-      <h2>Configurações de Unidade</h2>
-      <form id="formCfg">
-        <div class="grid">
-          <label>kg por saca (sc) <input type="number" step="0.01" name="kg_per_sc" required /></label>
-          <label>kg por big bag <input type="number" step="0.01" name="kg_per_bag" required /></label>
-        </div>
-        <button>Salvar Configurações</button>
-      </form>
-    </section>
-  </main>
+  // selects
+  const selT = $("#selLotTrat");
+  const selM = $("#selLotMov");
+  selT.innerHTML = "";
+  selM.innerHTML = "";
+  data.forEach(l => {
+    const opt = document.createElement("option");
+    opt.value = l.id;
+    opt.textContent = `${lotLabel(l)} • saldo ${fmt(l.balance_kg)} kg`;
+    selT.appendChild(opt.cloneNode(true));
+    selM.appendChild(opt);
+  });
+}
 
-  <footer>
-    <small>Sistema simples para Railway/GitHub • v1.0.0</small>
-  </footer>
+async function loadTrat() {
+  const data = await api("/api/treatments");
+  const tb = $("#tblTrat tbody");
+  tb.innerHTML = "";
+  data.forEach(t => {
+    const name = t.lot_name || LOT_INDEX[t.lot_id] || t.lot_id;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${name}</td>
+      <td>${t.product}</td>
+      <td>${fmt(t.qty_kg || 0)} kg</td>
+      <td>${fmt(t.dose_per_100kg || 0)}</td>
+      <td>${t.operator}</td>
+      <td>${new Date(t.treated_at).toLocaleDateString()}</td>
+      <td>${t.notes || ""}</td>`;
+    tb.appendChild(tr);
+  });
+}
 
-  <script src="script.js"></script>
-</body>
-</html>
+async function loadMov() {
+  const data = await api("/api/movements");
+  const tb = $("#tblMov tbody");
+  tb.innerHTML = "";
+  data.forEach(m => {
+    const name = LOT_INDEX[m.lot_id] || m.lot_id;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${name}</td>
+      <td>${m.destination_type}: ${m.destination_name}</td>
+      <td>${fmt(m.qty)} ${m.unit}</td>
+      <td>${fmt(m.qty_kg)} kg</td>
+      <td>${new Date(m.moved_at).toLocaleDateString()}</td>
+      <td>${m.notes || ""}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+async function loadEstoque() {
+  const data = await api("/api/inventory");
+  const tb = $("#tblEstoque tbody");
+  tb.innerHTML = "";
+  data.forEach(e => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${e.variety}</td>
+      <td>${fmt(e.kg)}</td>
+      <td>${fmt(e.sc)}</td>
+      <td>${fmt(e.bag)}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+async function loadCfg() {
+  const s = await api("/api/settings");
+  const form = $("#formCfg");
+  form.kg_per_sc.value = s.units.kg_per_sc;
+  form.kg_per_bag.value = s.units.kg_per_bag;
+}
+
+// ----- FORMS -----
+$("#formLote").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const payload = {
+    variety: fd.get("variety"),
+    supplier: fd.get("supplier"),
+    lot_code: fd.get("lot_code"),
+    unit: fd.get("unit"),
+    qty: Number(fd.get("qty")),
+    received_at: fd.get("received_at"),
+  };
+  await api("/api/seed-lots", { method: "POST", body: JSON.stringify(payload) });
+  e.target.reset();
+  await loadLotes();
+  alert("Lote salvo!");
+});
+
+$("#formTrat").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const payload = {
+    lot_id: fd.get("lot_id"),
+    product: fd.get("product"),
+    dose_per_100kg: Number(fd.get("dose_per_100kg") || 0),
+    operator: fd.get("operator"),
+    treated_at: fd.get("treated_at"),
+    unit: fd.get("unit"),                 // 👈 novo
+    qty: Number(fd.get("qty")),           // 👈 novo
+    notes: fd.get("notes"),
+  };
+  await api("/api/treatments", { method: "POST", body: JSON.stringify(payload) });
+  e.target.reset();
+  await loadTrat();
+  await loadLotes(); // atualiza saldos
+  alert("Tratamento registrado!");
+});
+
+$("#formMov").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const payload = {
+    lot_id: fd.get("lot_id"),
+    destination_type: fd.get("destination_type"),
+    destination_name: fd.get("destination_name"),
+    unit: fd.get("unit"),
+    qty: Number(fd.get("qty")),
+    moved_at: fd.get("moved_at"),
+    notes: fd.get("notes"),
+  };
+  try {
+    await api("/api/movements", { method: "POST", body: JSON.stringify(payload) });
+    e.target.reset();
+    await loadMov();
+    await loadLotes();
+    await loadEstoque();
+    alert("Saída registrada!");
+  } catch (err) {
+    try {
+      const j = JSON.parse(err.message);
+      alert(j.message || err.message);
+    } catch {
+      alert(err.message);
+    }
+  }
+});
+
+$("#formCfg").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const payload = {
+    units: {
+      kg_per_sc: Number(fd.get("kg_per_sc")),
+      kg_per_bag: Number(fd.get("kg_per_bag")),
+    },
+  };
+  await api("/api/settings", { method: "PUT", body: JSON.stringify(payload) });
+  await Promise.all([loadLotes(), loadEstoque()]);
+  alert("Configurações salvas!");
+});
+
+// Init
+(async function init() {
+  await loadCfg();
+  await loadLotes();
+  await loadTrat();
+  await loadMov();
+  await loadEstoque();
+})();
