@@ -1,11 +1,12 @@
+
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 // Tabs
-$$(".tab-btn").forEach(btn => {
+$$(".tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
-    $$(".tab-btn").forEach(b => b.classList.remove("active"));
-    $$(".tab").forEach(t => t.classList.remove("active"));
+    $$(".tab-btn").forEach((b) => b.classList.remove("active"));
+    $$(".tab").forEach((t) => t.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById(btn.dataset.tab).classList.add("active");
   });
@@ -14,23 +15,24 @@ $$(".tab-btn").forEach(btn => {
 async function api(path, options = {}) {
   const res = await fetch(path, {
     headers: { "Content-Type": "application/json" },
-    ...options
+    ...options,
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 function fmt(n) { return Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 2 }); }
 
-// índice local para mostrar nome do lote no lugar do ID
 let LOT_INDEX = {}; // id -> "Variedade • Código"
 const lotLabel = (l) => `${l.variety} • ${l.lot_code}`;
 
-// ----- LOADERS -----
+const btn = (label, cls="") => `<button class="action ${cls}" data-action="${label.toLowerCase()}">${label}</button>`;
+function rowActions(){ return btn("Editar","edit")+" "+btn("Excluir","del"); }
+
+// LOADERS
 async function loadLotes() {
   const data = await api("/api/seed-lots");
   LOT_INDEX = {};
-  const tb = $("#tblLotes tbody");
-  tb.innerHTML = "";
+  const tb = $("#tblLotes tbody"); tb.innerHTML = "";
   data.forEach(l => {
     LOT_INDEX[l.id] = lotLabel(l);
     const tr = document.createElement("tr");
@@ -41,19 +43,16 @@ async function loadLotes() {
       <td>${new Date(l.received_at).toLocaleDateString()}</td>
       <td>${fmt(l.qty)} ${l.unit}</td>
       <td>${fmt(l.balance_kg)} kg</td>
-      <td>${l.id}</td>`;
+      <td>${l.id}</td>
+      <td data-id="${l.id}" data-table="lots">${rowActions()}</td>`;
     tb.appendChild(tr);
   });
-
-  // selects
-  const selT = $("#selLotTrat");
-  const selM = $("#selLotMov");
-  selT.innerHTML = "";
-  selM.innerHTML = "";
+  const selT = $("#selLotTrat"), selM = $("#selLotMov");
+  selT.innerHTML = ""; selM.innerHTML = "";
   data.forEach(l => {
     const opt = document.createElement("option");
     opt.value = l.id;
-    opt.textContent = `${lotLabel(l)} • saldo ${fmt(l.balance_kg)} kg`;
+    opt.textContent = `${lotLabel(l)} • saldo ${fmt(l.balance_kg)} kg • tratado disp. ${fmt(l.treated_available_kg||0)} kg`;
     selT.appendChild(opt.cloneNode(true));
     selM.appendChild(opt);
   });
@@ -61,8 +60,7 @@ async function loadLotes() {
 
 async function loadTrat() {
   const data = await api("/api/treatments");
-  const tb = $("#tblTrat tbody");
-  tb.innerHTML = "";
+  const tb = $("#tblTrat tbody"); tb.innerHTML = "";
   data.forEach(t => {
     const name = t.lot_name || LOT_INDEX[t.lot_id] || t.lot_id;
     const tr = document.createElement("tr");
@@ -73,15 +71,15 @@ async function loadTrat() {
       <td>${fmt(t.dose_per_100kg || 0)}</td>
       <td>${t.operator}</td>
       <td>${new Date(t.treated_at).toLocaleDateString()}</td>
-      <td>${t.notes || ""}</td>`;
+      <td>${t.notes || ""}</td>
+      <td data-id="${t.id}" data-table="treatments">${rowActions()}</td>`;
     tb.appendChild(tr);
   });
 }
 
 async function loadMov() {
   const data = await api("/api/movements");
-  const tb = $("#tblMov tbody");
-  tb.innerHTML = "";
+  const tb = $("#tblMov tbody"); tb.innerHTML = "";
   data.forEach(m => {
     const name = LOT_INDEX[m.lot_id] || m.lot_id;
     const tr = document.createElement("tr");
@@ -91,115 +89,104 @@ async function loadMov() {
       <td>${fmt(m.qty)} ${m.unit}</td>
       <td>${fmt(m.qty_kg)} kg</td>
       <td>${new Date(m.moved_at).toLocaleDateString()}</td>
-      <td>${m.notes || ""}</td>`;
+      <td>${m.notes || ""}</td>
+      <td data-id="${m.id}" data-table="movements">${rowActions()}</td>`;
     tb.appendChild(tr);
   });
 }
 
 async function loadEstoque() {
   const data = await api("/api/inventory");
-  const tb = $("#tblEstoque tbody");
-  tb.innerHTML = "";
+  const tb = $("#tblEstoque tbody"); tb.innerHTML = "";
   data.forEach(e => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${e.variety}</td>
-      <td>${fmt(e.kg)}</td>
-      <td>${fmt(e.sc)}</td>
-      <td>${fmt(e.bag)}</td>`;
+    tr.innerHTML = `<td>${e.variety}</td><td>${fmt(e.kg)}</td><td>${fmt(e.sc)}</td><td>${fmt(e.bag)}</td>`;
     tb.appendChild(tr);
   });
 }
 
 async function loadCfg() {
   const s = await api("/api/settings");
-  const form = $("#formCfg");
-  form.kg_per_sc.value = s.units.kg_per_sc;
-  form.kg_per_bag.value = s.units.kg_per_bag;
+  const f = $("#formCfg"); f.kg_per_sc.value = s.units.kg_per_sc; f.kg_per_bag.value = s.units.kg_per_bag;
 }
 
-// ----- FORMS -----
+// FORMS
 $("#formLote").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
-  const payload = {
-    variety: fd.get("variety"),
-    supplier: fd.get("supplier"),
-    lot_code: fd.get("lot_code"),
-    unit: fd.get("unit"),
-    qty: Number(fd.get("qty")),
-    received_at: fd.get("received_at"),
-  };
-  await api("/api/seed-lots", { method: "POST", body: JSON.stringify(payload) });
-  e.target.reset();
-  await loadLotes();
-  alert("Lote salvo!");
+  const payload = { variety:fd.get("variety"), supplier:fd.get("supplier"), lot_code:fd.get("lot_code"), unit:fd.get("unit"), qty:Number(fd.get("qty")), received_at:fd.get("received_at") };
+  await api("/api/seed-lots", { method:"POST", body: JSON.stringify(payload) });
+  e.target.reset(); await loadLotes(); alert("Lote salvo!");
 });
 
 $("#formTrat").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
-  const payload = {
-    lot_id: fd.get("lot_id"),
-    product: fd.get("product"),
-    dose_per_100kg: Number(fd.get("dose_per_100kg") || 0),
-    operator: fd.get("operator"),
-    treated_at: fd.get("treated_at"),
-    unit: fd.get("unit"),                 // 👈 novo
-    qty: Number(fd.get("qty")),           // 👈 novo
-    notes: fd.get("notes"),
-  };
-  await api("/api/treatments", { method: "POST", body: JSON.stringify(payload) });
-  e.target.reset();
-  await loadTrat();
-  await loadLotes(); // atualiza saldos
-  alert("Tratamento registrado!");
+  const payload = { lot_id:fd.get("lot_id"), product:fd.get("product"), dose_per_100kg:Number(fd.get("dose_per_100kg")||0), operator:fd.get("operator"), treated_at:fd.get("treated_at"), unit:fd.get("unit"), qty:Number(fd.get("qty")), notes:fd.get("notes") };
+  await api("/api/treatments", { method:"POST", body: JSON.stringify(payload) });
+  e.target.reset(); await loadTrat(); await loadLotes(); alert("Tratamento registrado!");
 });
 
 $("#formMov").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
-  const payload = {
-    lot_id: fd.get("lot_id"),
-    destination_type: fd.get("destination_type"),
-    destination_name: fd.get("destination_name"),
-    unit: fd.get("unit"),
-    qty: Number(fd.get("qty")),
-    moved_at: fd.get("moved_at"),
-    notes: fd.get("notes"),
-  };
-  try {
-    await api("/api/movements", { method: "POST", body: JSON.stringify(payload) });
-    e.target.reset();
-    await loadMov();
-    await loadLotes();
-    await loadEstoque();
-    alert("Saída registrada!");
-  } catch (err) {
-    try {
-      const j = JSON.parse(err.message);
-      alert(j.message || err.message);
-    } catch {
-      alert(err.message);
-    }
-  }
+  const payload = { lot_id:fd.get("lot_id"), destination_type:fd.get("destination_type"), destination_name:fd.get("destination_name"), unit:fd.get("unit"), qty:Number(fd.get("qty")), moved_at:fd.get("moved_at"), notes:fd.get("notes") };
+  try{
+    await api("/api/movements", { method:"POST", body: JSON.stringify(payload) });
+    e.target.reset(); await loadMov(); await loadLotes(); await loadEstoque(); alert("Saída registrada!");
+  }catch(err){ try{ const j=JSON.parse(err.message); alert(j.message||err.message); }catch{ alert(err.message); } }
 });
 
 $("#formCfg").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
-  const payload = {
-    units: {
-      kg_per_sc: Number(fd.get("kg_per_sc")),
-      kg_per_bag: Number(fd.get("kg_per_bag")),
-    },
-  };
-  await api("/api/settings", { method: "PUT", body: JSON.stringify(payload) });
-  await Promise.all([loadLotes(), loadEstoque()]);
-  alert("Configurações salvas!");
+  const payload = { units:{ kg_per_sc:Number(fd.get("kg_per_sc")), kg_per_bag:Number(fd.get("kg_per_bag")) } };
+  await api("/api/settings", { method:"PUT", body: JSON.stringify(payload) });
+  await Promise.all([loadLotes(), loadEstoque()]); alert("Configurações salvas!");
+});
+
+// ACTION BUTTONS
+document.addEventListener("click", async (ev) => {
+  const el = ev.target.closest("button.action"); if(!el) return;
+  const cell = el.closest("td[data-id]"); const id = cell.dataset.id; const table = cell.dataset.table; const action = el.dataset.action;
+
+  try{
+    if(action === "excluir"){
+      if(!confirm("Confirmar exclusão?")) return;
+      if(table==="lots") await api(`/api/seed-lots/${id}`, { method:"DELETE" });
+      else if(table==="treatments") await api(`/api/treatments/${id}`, { method:"DELETE" });
+      else if(table==="movements") await api(`/api/movements/${id}`, { method:"DELETE" });
+      await Promise.all([loadLotes(), loadTrat(), loadMov(), loadEstoque()]);
+      alert("Excluído com sucesso!");
+      return;
+    }
+    if(action === "editar"){
+      if(table==="lots"){
+        const variety = prompt("Variedade:"); const supplier = prompt("Fornecedor:");
+        const lot_code = prompt("Código do lote:"); const unit = prompt("Unidade (kg/sc/bag):","kg");
+        const qty = Number(prompt("Quantidade (na unidade):","0")); const received_at = prompt("Data (yyyy-mm-dd):");
+        await api(`/api/seed-lots/${id}`, { method:"PUT", body: JSON.stringify({ variety, supplier, lot_code, unit, qty, received_at }) });
+      }else if(table==="treatments"){
+        const product = prompt("Produto:"); const dose_per_100kg = Number(prompt("Dose por 100kg:","0"));
+        const operator = prompt("Operador:"); const treated_at = prompt("Data (yyyy-mm-dd):");
+        const unit = prompt("Unidade tratada (kg/sc/bag):","kg"); const qty = Number(prompt("Quantidade tratada:","0"));
+        const notes = prompt("Observações:");
+        await api(`/api/treatments/${id}`, { method:"PUT", body: JSON.stringify({ product, dose_per_100kg, operator, treated_at, unit, qty, notes }) });
+      }else if(table==="movements"){
+        const destination_type = prompt("Destino (lavoura/fazenda):","lavoura");
+        const destination_name = prompt("Nome do destino:");
+        const unit = prompt("Unidade (kg/sc/bag):","kg"); const qty = Number(prompt("Quantidade:","0"));
+        const moved_at = prompt("Data (yyyy-mm-dd):"); const notes = prompt("Observações:");
+        await api(`/api/movements/${id}`, { method:"PUT", body: JSON.stringify({ destination_type, destination_name, unit, qty, moved_at, notes }) });
+      }
+      await Promise.all([loadLotes(), loadTrat(), loadMov(), loadEstoque()]);
+      alert("Editado com sucesso!");
+    }
+  }catch(err){ try{ const j=JSON.parse(err.message); alert(j.message||err.message); }catch{ alert(err.message); } }
 });
 
 // Init
-(async function init() {
+(async function init(){
   await loadCfg();
   await loadLotes();
   await loadTrat();
