@@ -16,9 +16,7 @@ async function api(path, options = {}) {
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
-function fmt(n) {
-  return Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 3, minimumFractionDigits: 0 });
-}
+function fmt(n) { return Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 3, minimumFractionDigits: 0 }); }
 
 let LOT_INDEX = {}; // id -> "Variedade • Código"
 const lotLabel = (l) => `${l.variety} • ${l.lot_code}`;
@@ -97,9 +95,7 @@ async function loadEstoque() {
   const lots = await api("/api/seed-lots");
   const tb = $("#tblEstoque tbody"); 
   tb.innerHTML = "";
-
   lots.sort((a,b) => (a.variety||"").localeCompare(b.variety||"") || (a.lot_code||"").localeCompare(b.lot_code||""));
-
   lots.forEach(l => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -195,7 +191,29 @@ document.addEventListener("click", async (ev) => {
   }catch(err){ try{ const j=JSON.parse(err.message); alert(j.message||err.message); }catch{ alert(err.message); } }
 });
 
-// Init
+// realtime
+if (window.io) {
+  const socket = io();
+  let cooling = false;
+  function refreshFor(type) {
+    if (cooling) return;
+    cooling = true;
+    setTimeout(async () => {
+      cooling = false;
+      if (type === "lots" || type === "settings") {
+        await Promise.all([loadLotes(), loadEstoque()]);
+      }
+      if (type === "treatments") {
+        await Promise.all([loadTrat(), loadLotes(), loadEstoque()]);
+      }
+      if (type === "movements") {
+        await Promise.all([loadMov(), loadLotes(), loadEstoque()]);
+      }
+    }, 300);
+  }
+  socket.on("data:update", ({ type }) => refreshFor(type));
+}
+
 (async function init(){
   await loadCfg();
   await loadLotes();
