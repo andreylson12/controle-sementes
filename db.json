@@ -1,0 +1,11 @@
+{
+  "settings": {
+    "units": {
+      "kg_per_sc": 60,
+      "kg_per_bag": 1000
+    }
+  },
+  "seed_lots": [],
+  "treatments": [],
+  "movements": []
+}

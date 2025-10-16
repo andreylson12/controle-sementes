@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Controle de Sementes - Fazenda</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Controle de Sementes</h1>
+    <nav>
+      <button class="tab-btn" data-tab="cadastro">Cadastro de Lotes</button>
+      <button class="tab-btn" data-tab="tratamento">Tratamento</button>
+      <button class="tab-btn" data-tab="saida">Saída / Envio</button>
+      <button class="tab-btn" data-tab="estoque">Estoque</button>
+      <button class="tab-btn" data-tab="config">Configurações</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="cadastro" class="tab active">
+      <h2>Novo Lote</h2>
+      <form id="formLote">
+        <div class="grid">
+          <label>Variedade <input name="variety" required /></label>
+          <label>Fornecedor <input name="supplier" required /></label>
+          <label>Código do Lote <input name="lot_code" required /></label>
+          <label>Data Recebimento <input type="date" name="received_at" required /></label>
+          <label>Unidade
+            <select name="unit">
+              <option value="kg">kg</option>
+              <option value="sc">sc</option>
+              <option value="bag">bag</option>
+            </select>
+          </label>
+          <label>Quantidade <input type="number" step="0.01" name="qty" required /></label>
+        </div>
+        <button>Salvar Lote</button>
+      </form>
+      <h3>Lotes cadastrados</h3>
+      <table id="tblLotes">
+        <thead><tr><th>Variedade</th><th>Fornecedor</th><th>Lote</th><th>Recebido</th><th>Qtd (unidade)</th><th>Saldo (kg)</th><th>Tratado?</th><th>ID</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="tratamento" class="tab">
+      <h2>Registrar Tratamento</h2>
+      <form id="formTrat">
+        <div class="grid">
+          <label>Lote
+            <select name="lot_id" id="selLotTrat"></select>
+          </label>
+          <label>Produto <input name="product" required /></label>
+          <label>Dose por 100kg <input type="number" step="0.01" name="dose_per_100kg" value="0" /></label>
+          <label>Operador <input name="operator" required /></label>
+          <label>Data <input type="date" name="treated_at" required /></label>
+          <label>Observações <input name="notes" /></label>
+        </div>
+        <button>Salvar Tratamento</button>
+      </form>
+      <h3>Tratamentos</h3>
+      <table id="tblTrat">
+        <thead><tr><th>Lote</th><th>Produto</th><th>Dose/100kg</th><th>Operador</th><th>Data</th><th>Obs</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="saida" class="tab">
+      <h2>Saída / Envio</h2>
+      <form id="formMov">
+        <div class="grid">
+          <label>Lote
+            <select name="lot_id" id="selLotMov"></select>
+          </label>
+          <label>Destino (lavoura ou fazenda)
+            <select name="destination_type">
+              <option value="lavoura">lavoura</option>
+              <option value="fazenda">fazenda</option>
+            </select>
+          </label>
+          <label>Nome do Destino <input name="destination_name" required /></label>
+          <label>Unidade
+            <select name="unit">
+              <option value="kg">kg</option>
+              <option value="sc">sc</option>
+              <option value="bag">bag</option>
+            </select>
+          </label>
+          <label>Quantidade <input type="number" step="0.01" name="qty" required /></label>
+          <label>Data <input type="date" name="moved_at" required /></label>
+          <label>Observações <input name="notes" /></label>
+        </div>
+        <button>Registrar Saída</button>
+      </form>
+      <h3>Movimentações</h3>
+      <table id="tblMov">
+        <thead><tr><th>Lote</th><th>Destino</th><th>Qtd (unid)</th><th>Qtd (kg)</th><th>Data</th><th>Obs</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="estoque" class="tab">
+      <h2>Estoque por Variedade</h2>
+      <table id="tblEstoque">
+        <thead><tr><th>Variedade</th><th>kg</th><th>sc</th><th>bag</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="config" class="tab">
+      <h2>Configurações de Unidade</h2>
+      <form id="formCfg">
+        <div class="grid">
+          <label>kg por saca (sc) <input type="number" step="0.01" name="kg_per_sc" required /></label>
+          <label>kg por big bag <input type="number" step="0.01" name="kg_per_bag" required /></label>
+        </div>
+        <button>Salvar Configurações</button>
+      </form>
+    </section>
+  </main>
+
+  <footer>
+    <small>Sistema simples para Railway/GitHub • v1.0.0</small>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

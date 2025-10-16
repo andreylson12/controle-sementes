@@ -1,0 +1,20 @@
+{
+  "name": "controle-sementes-fazenda",
+  "version": "1.0.0",
+  "description": "Sistema simples de controle de sementes (kg, sc, bag) com tratamento obrigatório antes da saída.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.x"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "lowdb": "^7.0.1",
+    "nanoid": "^5.0.7",
+    "zod": "^3.23.8"
+  }
+}
