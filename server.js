@@ -1,3 +1,4 @@
+
 import express from "express";
 import cors from "cors";
 import { LowSync } from "lowdb";
@@ -6,9 +7,16 @@ import { customAlphabet } from "nanoid";
 import { z } from "zod";
 import path from "path";
 import fs from "fs";
+import { createServer } from "http";
+import { Server as SocketIOServer } from "socket.io";
 
 const nanoid = customAlphabet("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz", 10);
+
+// express + http + socket.io
 const app = express();
+const httpServer = createServer(app);
+const io = new SocketIOServer(httpServer, { cors: { origin: "*" } });
+
 app.use(cors());
 app.use(express.json());
 
@@ -31,21 +39,31 @@ function lotById(id){ db.read(); return db.data.seed_lots.find(l=>l.id===id); }
 function usedKgInMovements(lot_id){ db.read(); return db.data.movements.filter(m=>m.lot_id===lot_id).reduce((a,m)=>a+(m.qty_kg||0),0); }
 function treatedKg(lot_id){ db.read(); return db.data.treatments.filter(t=>t.lot_id===lot_id).reduce((a,t)=>a+(t.qty_kg||0),0); }
 
+function pushUpdate(type, payload = {}){ io.emit("data:update", { type, ...payload, ts: Date.now() }); }
+
 const lotSchema = z.object({ variety:z.string().min(1), supplier:z.string().min(1), lot_code:z.string().min(1), unit:z.enum(["kg","sc","bag"]), qty:z.number().positive(), received_at:z.string().min(1) });
 const treatmentSchema = z.object({ lot_id:z.string().min(1), product:z.string().min(1), dose_per_100kg:z.number().nonnegative().default(0), operator:z.string().min(1), treated_at:z.string().min(1), unit:z.enum(["kg","sc","bag"]), qty:z.number().positive(), notes:z.string().optional() });
 const movementSchema = z.object({ lot_id:z.string().min(1), destination_type:z.enum(["lavoura","fazenda"]), destination_name:z.string().min(1), unit:z.enum(["kg","sc","bag"]), qty:z.number().positive(), moved_at:z.string().min(1), notes:z.string().optional() });
 const settingsSchema = z.object({ units:z.object({ kg_per_sc:z.number().positive(), kg_per_bag:z.number().positive() }) });
 
-app.get("/api/status", (_req,res)=>res.json({ok:true,version:"1.4.1"}));
+app.get("/api/status", (_req,res)=>res.json({ok:true,version:"1.5.0"}));
 app.get("/api/settings", (_req,res)=>res.json(currentSettings()));
-app.put("/api/settings", (req,res)=>{ const p=settingsSchema.safeParse(req.body); if(!p.success) return res.status(400).json(p.error); db.read(); db.data.settings=p.data; db.write(); res.json(db.data.settings); });
+app.put("/api/settings", (req,res)=>{ 
+  const p=settingsSchema.safeParse(req.body); 
+  if(!p.success) return res.status(400).json(p.error); 
+  db.read(); db.data.settings=p.data; db.write(); 
+  pushUpdate("settings"); 
+  res.json(db.data.settings); 
+});
 
 // LOTES
 app.post("/api/seed-lots", (req,res)=>{
   const p=lotSchema.safeParse(req.body); if(!p.success) return res.status(400).json(p.error);
   const s=currentSettings(); const qty_kg=toKg(p.data.qty,p.data.unit,s);
   const lot={ id:nanoid(), ...p.data, qty_kg };
-  db.read(); db.data.seed_lots.push(lot); db.write(); res.status(201).json(lot);
+  db.read(); db.data.seed_lots.push(lot); db.write(); 
+  pushUpdate("lots");
+  res.status(201).json(lot);
 });
 app.get("/api/seed-lots", (_req,res)=>{
   const s=currentSettings(); db.read();
@@ -80,6 +98,7 @@ app.put("/api/seed-lots/:id", (req, res) => {
 
   db.data.seed_lots[idx] = { ...db.data.seed_lots[idx], ...update, qty: qty, unit: unit, qty_kg: new_qty_kg };
   db.write();
+  pushUpdate("lots");
   res.json(db.data.seed_lots[idx]);
 });
 app.delete("/api/seed-lots/:id", (req, res) => {
@@ -94,6 +113,7 @@ app.delete("/api/seed-lots/:id", (req, res) => {
   if (idx === -1) return res.status(404).json({ message: "Lote não encontrado" });
   const removed = db.data.seed_lots.splice(idx,1)[0];
   db.write();
+  pushUpdate("lots");
   res.json({ ok:true, removed_id: removed.id });
 });
 
@@ -104,6 +124,7 @@ app.post("/api/treatments", (req,res)=>{
   const s=currentSettings(); const qty_kg = toKg(p.data.qty, p.data.unit, s);
   const t={ id:nanoid(), ...p.data, qty_kg };
   db.read(); db.data.treatments.push(t); db.write();
+  pushUpdate("treatments"); pushUpdate("lots");
   const lot_name = `${lot.variety} • ${lot.lot_code}`;
   res.status(201).json({ ...t, lot_name });
 });
@@ -143,7 +164,7 @@ app.put("/api/treatments/:id", (req, res) => {
 
   db.data.treatments[idx] = { ...db.data.treatments[idx], ...update, qty_kg, lot_id };
   db.write();
-
+  pushUpdate("treatments"); pushUpdate("lots");
   const lot = lotById(db.data.treatments[idx].lot_id);
   const lot_name = lot ? `${lot.variety} • ${lot.lot_code}` : db.data.treatments[idx].lot_id;
   res.json({ ...db.data.treatments[idx], lot_name });
@@ -167,6 +188,7 @@ app.delete("/api/treatments/:id", (req, res) => {
 
   db.data.treatments.splice(idx,1);
   db.write();
+  pushUpdate("treatments"); pushUpdate("lots");
   res.json({ ok:true });
 });
 
@@ -183,7 +205,9 @@ app.post("/api/movements", (req,res)=>{
   if(qty_kg > treated_available + 1e-6) return res.status(400).json({message:"Quantidade requisitada ultrapassa o volume TRATADO disponível do lote."});
   if(qty_kg > (lot.qty_kg - already_moved) + 1e-6) return res.status(400).json({message:"Quantidade requisitada ultrapassa o saldo total do lote."});
 
-  const m={ id:nanoid(), ...p.data, qty_kg }; db.read(); db.data.movements.push(m); db.write(); res.status(201).json(m);
+  const m={ id:nanoid(), ...p.data, qty_kg }; db.read(); db.data.movements.push(m); db.write(); 
+  pushUpdate("movements"); pushUpdate("lots");
+  res.status(201).json(m);
 });
 app.get("/api/movements", (_req,res)=>{ db.read(); res.json(db.data.movements); });
 app.put("/api/movements/:id", (req, res) => {
@@ -222,6 +246,7 @@ app.put("/api/movements/:id", (req, res) => {
 
   db.data.movements[idx] = { ...db.data.movements[idx], ...update, qty_kg, lot_id };
   db.write();
+  pushUpdate("movements"); pushUpdate("lots");
   res.json(db.data.movements[idx]);
 });
 app.delete("/api/movements/:id", (req, res) => {
@@ -231,11 +256,12 @@ app.delete("/api/movements/:id", (req, res) => {
   if (idx === -1) return res.status(404).json({ message: "Movimentação não encontrada" });
   db.data.movements.splice(idx,1);
   db.write();
+  pushUpdate("movements"); pushUpdate("lots");
   res.json({ ok:true });
 });
 
+// agregado por variedade (mantido, opcional)
 app.get("/api/inventory", (_req,res)=>{
-  // (Mantido o agregado por variedade caso queira usar depois)
   const s=currentSettings(); db.read(); const byVariety={};
   for(const lot of db.data.seed_lots){ const used=usedKgInMovements(lot.id); const bal=Math.max(0,(lot.qty_kg||0)-used); byVariety[lot.variety]=(byVariety[lot.variety]||0)+bal; }
   const result=Object.entries(byVariety).map(([variety,kg])=>({ variety, kg, sc:kg/(s.units.kg_per_sc||60), bag:kg/(s.units.kg_per_bag||1000) }));
@@ -244,4 +270,4 @@ app.get("/api/inventory", (_req,res)=>{
 
 app.use(express.static("public"));
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, ()=>console.log(`Servidor rodando na porta ${PORT}`));
+httpServer.listen(PORT, ()=>console.log(`Servidor rodando na porta ${PORT}`));
