@@ -1,4 +1,3 @@
-
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -13,14 +12,13 @@ $$(".tab-btn").forEach((btn) => {
 });
 
 async function api(path, options = {}) {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
+  const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
-function fmt(n) { return Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 2 }); }
+function fmt(n) {
+  return Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 3, minimumFractionDigits: 0 });
+}
 
 let LOT_INDEX = {}; // id -> "Variedade • Código"
 const lotLabel = (l) => `${l.variety} • ${l.lot_code}`;
@@ -42,8 +40,7 @@ async function loadLotes() {
       <td>${l.lot_code}</td>
       <td>${new Date(l.received_at).toLocaleDateString()}</td>
       <td>${fmt(l.qty)} ${l.unit}</td>
-      <td>${fmt(l.balance_kg)} kg</td>
-      <td>${l.id}</td>
+      <td>${fmt(l.balance_bag)} bag</td>
       <td data-id="${l.id}" data-table="lots">${rowActions()}</td>`;
     tb.appendChild(tr);
   });
@@ -96,18 +93,31 @@ async function loadMov() {
 }
 
 async function loadEstoque() {
-  const data = await api("/api/inventory");
-  const tb = $("#tblEstoque tbody"); tb.innerHTML = "";
-  data.forEach(e => {
+  // Estoque por LOTE
+  const lots = await api("/api/seed-lots");
+  const tb = $("#tblEstoque tbody"); 
+  tb.innerHTML = "";
+
+  lots.sort((a,b) => (a.variety||"").localeCompare(b.variety||"") || (a.lot_code||"").localeCompare(b.lot_code||""));
+
+  lots.forEach(l => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${e.variety}</td><td>${fmt(e.kg)}</td><td>${fmt(e.sc)}</td><td>${fmt(e.bag)}</td>`;
+    tr.innerHTML = `
+      <td>${l.variety}</td>
+      <td>${l.lot_code}</td>
+      <td>${fmt(l.balance_kg)}</td>
+      <td>${fmt(l.balance_sc)}</td>
+      <td>${fmt(l.balance_bag)}</td>`;
+    if ((l.balance_kg || 0) <= 0) tr.style.opacity = "0.6"; // marca zerados
     tb.appendChild(tr);
   });
 }
 
 async function loadCfg() {
   const s = await api("/api/settings");
-  const f = $("#formCfg"); f.kg_per_sc.value = s.units.kg_per_sc; f.kg_per_bag.value = s.units.kg_per_bag;
+  const f = $("#formCfg"); 
+  f.kg_per_sc.value = s.units.kg_per_sc; 
+  f.kg_per_bag.value = s.units.kg_per_bag;
 }
 
 // FORMS
@@ -145,10 +155,10 @@ $("#formCfg").addEventListener("submit", async (e) => {
   await Promise.all([loadLotes(), loadEstoque()]); alert("Configurações salvas!");
 });
 
-// ACTION BUTTONS
+// ACTION BUTTONS (edit/delete)
 document.addEventListener("click", async (ev) => {
   const el = ev.target.closest("button.action"); if(!el) return;
-  const cell = el.closest("td[data-id]"); const id = cell.dataset.id; const table = cell.dataset.table; const action = el.dataset.action;
+  const cell = el.closest("td[data-id]"); const id = cell?.dataset.id; const table = cell?.dataset.table; const action = el.dataset.action;
 
   try{
     if(action === "excluir"){
