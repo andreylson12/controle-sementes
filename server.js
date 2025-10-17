@@ -30,11 +30,10 @@ const db = new LowSync(adapter, {
   settings: { units: { kg_per_sc: 60, kg_per_bag: 1000 } },
   seed_lots: [],
   treatments: [],
-  movements: []
-},
-  events: []);
+  movements: [],
+  events: []
+});
 db.read(); db.write();
-
 function toKg(qty, unit, settings){ if(unit==="kg") return qty; if(unit==="sc") return qty*(settings.units.kg_per_sc||60); if(unit==="bag") return qty*(settings.units.kg_per_bag||1000); throw new Error("Unidade inválida"); }
 function fromKg(kg, unit, settings){ if(unit==="kg") return kg; if(unit==="sc") return kg/(settings.units.kg_per_sc||60); if(unit==="bag") return kg/(settings.units.kg_per_bag||1000); throw new Error("Unidade inválida"); }
 function currentSettings(){ db.read(); return db.data.settings; }
