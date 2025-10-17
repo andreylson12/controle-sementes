@@ -164,7 +164,7 @@
     <section id="estoque" class="tab">
       <h2>Estoque por Lote</h2>
 
-      <!-- Toolbar de filtros e PDFs -->
+      <!-- Toolbar de filtros e PDFs (fora da table) -->
       <div class="toolbar" id="estoqueToolbar" style="display:flex; gap:.5rem; align-items:end; margin:.5rem 0 1rem">
         <label>Variedade<br><input id="fVar" placeholder="ex.: MURALHA" /></label>
         <label>Lote<br><input id="fLote" placeholder="ex.: PS808512-7025" /></label>
@@ -194,7 +194,6 @@
           </tr>
         </thead>
         <tbody></tbody>
-        <!-- Totais do ESTOQUE (respeitam filtros) -->
         <tfoot>
           <tr>
             <td colspan="3"><strong>Totais (após filtro)</strong></td>
@@ -207,7 +206,6 @@
         </tfoot>
       </table>
 
-      <!-- Resumo do estoque -->
       <div id="estoqueResumo" style="display:flex;gap:1rem;justify-content:flex-end;margin:.5rem 0 0;color:#94a3b8">
         <span id="countLots">0 lotes</span><span>|</span>
         <span>kg: <b id="sumKg2">0</b></span>
