@@ -139,13 +139,11 @@ async function loadMov() {
 }
 
 
-async function loadEstoque() {
-  // Estoque por LOTE
-  const lots = await api("/api/seed-lots");
-  const tb = $("#tblEstoque tbody"); 
-  tb.innerHTML = "";
 
-  // Read filters
+async function loadEstoque() {
+  const lots = await api("/api/seed-lots");
+  const tb = $("#tblEstoque tbody"); if(!tb) return; tb.innerHTML = "";
+
   const v = ($("#fVar")?.value||"").trim().toLowerCase();
   const l = ($("#fLote")?.value||"").trim().toLowerCase();
   const from = $("#fFrom")?.value ? new Date($("#fFrom").value) : null;
@@ -156,16 +154,10 @@ async function loadEstoque() {
     if (onlySaldo && (Number(x.balance_kg||0) <= 0)) return false;
     if (v && !(x.variety||"").toLowerCase().includes(v)) return false;
     if (l && !(x.lot_code||"").toLowerCase().includes(l)) return false;
-    if (from) {
-      const d = new Date(x.received_at); if (!(d >= from)) return false;
-    }
-    if (to) {
-      const d = new Date(x.received_at); if (!(d <= to)) return false;
-    }
+    if (from) { const d = new Date(x.received_at); if (!(d >= from)) return false; }
+    if (to)   { const d = new Date(x.received_at); if (!(d <= to))   return false; }
     return true;
-  });
-
-  filtered.sort((a,b) => (a.variety||"").localeCompare(b.variety||"") || (a.lot_code||"").localeCompare(b.lot_code||""));
+  }).sort((a,b)=>(a.variety||"").localeCompare(b.variety||"")||(a.lot_code||"").localeCompare(b.lot_code||""));
 
   filtered.forEach(lot => {
     const tr = document.createElement("tr");
@@ -173,47 +165,33 @@ async function loadEstoque() {
       <td>${lot.variety}</td>
       <td>${lot.lot_code}</td>
       <td>${lot.received_at ? new Date(lot.received_at).toLocaleDateString() : "-"}</td>
-      <td>${fmt(lot.balance_kg)}</td>
-      <td>${fmt(lot.balance_sc)}</td>
-      <td>${fmt(lot.balance_bag)}</td>`;
-    if ((lot.balance_kg || 0) <= 0) tr.style.opacity = "0.6"; // marca zerados
+      <td>${(lot.entrada_kg ?? 0).toLocaleString()}</td>
+      <td>${(lot.saida_kg ?? 0).toLocaleString()}</td>
+      <td>${(lot.balance_kg ?? 0).toLocaleString()}</td>
+      <td>${(lot.balance_sc ?? 0).toLocaleString()}</td>
+      <td>${(lot.balance_bag ?? 0).toLocaleString()}</td>`;
+    if ((lot.balance_kg || 0) <= 0) tr.style.opacity = "0.6";
     tb.appendChild(tr);
   });
+
+  const totals = filtered.reduce((a,x)=>{
+    a.in+=Number(x.entrada_kg||0);
+    a.out+=Number(x.saida_kg||0);
+    a.kg+=Number(x.balance_kg||0);
+    a.sc+=Number(x.balance_sc||0);
+    a.bag+=Number(x.balance_bag||0);
+    return a;
+  }, {in:0,out:0,kg:0,sc:0,bag:0});
+
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.textContent = Number(v||0).toLocaleString(); };
+  set("sumIn", totals.in); set("sumOut", totals.out);
+  set("sumKg", totals.kg); set("sumSc", totals.sc); set("sumBag", totals.bag);
+  const sumKg2=document.getElementById("sumKg2"); if(sumKg2) sumKg2.textContent=Number(totals.kg||0).toLocaleString();
+  const sumSc2=document.getElementById("sumSc2"); if(sumSc2) sumSc2.textContent=Number(totals.sc||0).toLocaleString();
+  const sumBag2=document.getElementById("sumBag2"); if(sumBag2) sumBag2.textContent=Number(totals.bag||0).toLocaleString();
+  const countLots=document.getElementById("countLots"); if(countLots) countLots.textContent=`${filtered.length} lote${filtered.length===1?"":"s"}`;
 }
-
-async function loadCfg() {
-  const s = await api("/api/settings");
-  const f = $("#formCfg"); 
-  f.kg_per_sc.value = s.units.kg_per_sc; 
-  f.kg_per_bag.value = s.units.kg_per_bag;
-}
-
-// FORMS
-$("#formLote").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const payload = { variety:fd.get("variety"), supplier:fd.get("supplier"), lot_code:fd.get("lot_code"), unit:fd.get("unit"), qty:Number(fd.get("qty")), received_at:fd.get("received_at") };
-  await api("/api/seed-lots", { method:"POST", body: JSON.stringify(payload) });
-  e.target.reset(); await loadLotes(); alert("Lote salvo!");
-});
-
-$("#formTrat").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const payload = { lot_id:fd.get("lot_id"), product:fd.get("product"), dose_per_100kg:Number(fd.get("dose_per_100kg")||0), operator:fd.get("operator"), treated_at:fd.get("treated_at"), unit:fd.get("unit"), qty:Number(fd.get("qty")), notes:fd.get("notes") };
-  await api("/api/treatments", { method:"POST", body: JSON.stringify(payload) });
-  e.target.reset(); await loadTrat(); await loadLotes(); alert("Tratamento registrado!");
-});
-
-$("#formMov").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const payload = { lot_id:fd.get("lot_id"), destination_type:fd.get("destination_type"), destination_name:fd.get("destination_name"), unit:fd.get("unit"), qty:Number(fd.get("qty")), moved_at:fd.get("moved_at"), notes:fd.get("notes") };
-  try{
-    await api("/api/movements", { method:"POST", body: JSON.stringify(payload) });
-    e.target.reset(); await loadMov(); await loadLotes(); await loadEstoque(); alert("Saída registrada!");
-  }catch(err){ try{ const j=JSON.parse(err.message); alert(j.message||err.message); }catch{ alert(err.message); } }
-});
+);
 
 $("#formCfg").addEventListener("submit", async (e) => {
   e.preventDefault();
