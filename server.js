@@ -1,12 +1,12 @@
 // server.js (ESM)
-// Requisitos: Node 18+, "type":"module" no package.json, lowdb v6+, socket.io
+// Node 18+, package.json com "type":"module"
+// Dependências: express, socket.io, lowdb@6, nanoid, cors
 
 import express from "express";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 
@@ -79,6 +79,10 @@ function treatedKg(lot_id) {
     .filter((t) => t.lot_id === lot_id)
     .reduce((a, t) => a + Number(t.qty_kg || 0), 0);
 }
+function lotNameById(lot_id) {
+  const l = lotById(lot_id);
+  return l ? `${l.variety} • ${l.lot_code}` : lot_id;
+}
 
 function pushUpdate(type, extra = {}) {
   io.emit("data:update", { type, ...extra, ts: Date.now() });
@@ -100,14 +104,72 @@ function addEvent({ by, entity, action, ref_id, details = {} }) {
   db.write();
   return ev;
 }
+
+// Notificação em PT-BR com nomes legíveis
 function emitAlarm(ev) {
-  const msg = `[${new Date(ev.when).toLocaleString()}] ${ev.by} ${ev.action} ${ev.entity} (${ev.ref_id})`;
+  const by = ev.by || "Técnico (anônimo)";
+  const d = ev.details || {};
+  let msg = "";
+
+  switch (ev.entity) {
+    case "settings":
+      if (ev.action === "update")
+        msg = `${by} atualizou as configurações de unidades.`;
+      break;
+
+    case "lot": {
+      const nome =
+        d.variety && d.lot_code
+          ? `${d.variety} • ${d.lot_code}`
+          : d.nome || d.lot_id || ev.ref_id;
+      if (ev.action === "create") msg = `${by} cadastrou o lote ${nome}.`;
+      else if (ev.action === "update") msg = `${by} alterou o lote ${nome}.`;
+      else if (ev.action === "delete") msg = `${by} excluiu o lote ${nome}.`;
+      break;
+    }
+
+    case "treatment": {
+      const nome =
+        d.lot_name ||
+        (d.variety && d.lot_code
+          ? `${d.variety} • ${d.lot_code}`
+          : d.lot_id || ev.ref_id);
+      const prod = d.product ? ` (produto: ${d.product})` : "";
+      if (ev.action === "create")
+        msg = `${by} registrou tratamento no lote ${nome}${prod}.`;
+      else if (ev.action === "update")
+        msg = `${by} editou tratamento do lote ${nome}${prod}.`;
+      else if (ev.action === "delete")
+        msg = `${by} excluiu tratamento do lote ${nome}${prod}.`;
+      break;
+    }
+
+    case "movement": {
+      const nome =
+        d.lot_name ||
+        (d.variety && d.lot_code
+          ? `${d.variety} • ${d.lot_code}`
+          : d.lot_id || ev.ref_id);
+      const dest = d.destination ? ` para ${d.destination}` : "";
+      if (ev.action === "create")
+        msg = `${by} registrou saída do lote ${nome}${dest}.`;
+      else if (ev.action === "update")
+        msg = `${by} editou saída do lote ${nome}${dest}.`;
+      else if (ev.action === "delete")
+        msg = `${by} excluiu saída do lote ${nome}${dest}.`;
+      break;
+    }
+
+    default:
+      msg = `${by} ${ev.action} ${ev.entity}.`;
+  }
+
   io.emit("alarm", { ...ev, message: msg });
 }
 
 // ===== Rotas básicas =====
 app.get("/api/status", (_req, res) =>
-  res.json({ ok: true, version: "1.6.0" })
+  res.json({ ok: true, version: "1.6.1" })
 );
 
 app.get("/api/settings", (_req, res) => res.json(currentSettings()));
@@ -252,7 +314,8 @@ app.delete("/api/seed-lots/:id", (req, res) => {
   const idx = db.data.seed_lots.findIndex((l) => l.id === id);
   if (idx === -1) return res.status(404).json({ message: "Lote não encontrado" });
 
-  const removed = db.data.seed_lots.splice(idx, 1)[0];
+  const removed = db.data.seed_lots[idx]; // capturar antes
+  db.data.seed_lots.splice(idx, 1);
   db.write();
   pushUpdate("lots");
 
@@ -261,6 +324,7 @@ app.delete("/api/seed-lots/:id", (req, res) => {
     entity: "lot",
     action: "delete",
     ref_id: removed.id,
+    details: { variety: removed.variety, lot_code: removed.lot_code },
   });
   emitAlarm(ev);
 
@@ -283,16 +347,16 @@ app.post("/api/treatments", (req, res) => {
   pushUpdate("treatments");
   pushUpdate("lots");
 
+  const lot_name = `${lot.variety} • ${lot.lot_code}`;
   const ev = addEvent({
     by: req.userName,
     entity: "treatment",
     action: "create",
     ref_id: t.id,
-    details: { lot_id: t.lot_id, product: t.product },
+    details: { lot_id: t.lot_id, lot_name, product: t.product },
   });
   emitAlarm(ev);
 
-  const lot_name = `${lot.variety} • ${lot.lot_code}`;
   res.status(201).json({ ...t, lot_name });
 });
 
@@ -345,17 +409,17 @@ app.put("/api/treatments/:id", (req, res) => {
   pushUpdate("treatments");
   pushUpdate("lots");
 
+  const lot = lotById(lot_id);
+  const lot_name = lot ? `${lot.variety} • ${lot.lot_code}` : lot_id;
   const ev = addEvent({
     by: req.userName,
     entity: "treatment",
     action: "update",
     ref_id: id,
-    details: { lot_id, product: db.data.treatments[idx].product },
+    details: { lot_id, lot_name, product: db.data.treatments[idx].product },
   });
   emitAlarm(ev);
 
-  const lot = lotById(lot_id);
-  const lot_name = lot ? `${lot.variety} • ${lot.lot_code}` : lot_id;
   res.json({ ...db.data.treatments[idx], lot_name });
 });
 
@@ -367,21 +431,8 @@ app.delete("/api/treatments/:id", (req, res) => {
     return res.status(404).json({ message: "Tratamento não encontrado" });
 
   const t = db.data.treatments[idx];
-  const lot_id = t.lot_id;
-
-  const total_restante = db.data.treatments
-    .filter((x) => x.id !== id && x.lot_id === lot_id)
-    .reduce((a, x) => a + (x.qty_kg || 0), 0);
-
-  const already_moved = usedKgInMovements(lot_id);
-  if (already_moved > total_restante + 1e-6) {
-    return res
-      .status(400)
-      .json({
-        message:
-          "Exclusão impediria cobrir as saídas já realizadas para esse lote.",
-      });
-  }
+  const lot = lotById(t.lot_id);
+  const lot_name = lot ? `${lot.variety} • ${lot.lot_code}` : t.lot_id;
 
   db.data.treatments.splice(idx, 1);
   db.write();
@@ -393,7 +444,7 @@ app.delete("/api/treatments/:id", (req, res) => {
     entity: "treatment",
     action: "delete",
     ref_id: id,
-    details: { lot_id },
+    details: { lot_id: t.lot_id, lot_name, product: t.product },
   });
   emitAlarm(ev);
 
@@ -430,12 +481,13 @@ app.post("/api/movements", (req, res) => {
   pushUpdate("movements");
   pushUpdate("lots");
 
+  const lot_name = `${lot.variety} • ${lot.lot_code}`;
   const ev = addEvent({
     by: req.userName,
     entity: "movement",
     action: "create",
     ref_id: m.id,
-    details: { lot_id: m.lot_id, destination: m.destination_name },
+    details: { lot_id: m.lot_id, lot_name, destination: m.destination_name },
   });
   emitAlarm(ev);
 
@@ -494,6 +546,7 @@ app.put("/api/movements/:id", (req, res) => {
   pushUpdate("movements");
   pushUpdate("lots");
 
+  const lot_name = `${lot.variety} • ${lot.lot_code}`;
   const ev = addEvent({
     by: req.userName,
     entity: "movement",
@@ -501,6 +554,7 @@ app.put("/api/movements/:id", (req, res) => {
     ref_id: id,
     details: {
       lot_id: db.data.movements[idx].lot_id,
+      lot_name,
       destination: db.data.movements[idx].destination_name,
     },
   });
@@ -516,6 +570,9 @@ app.delete("/api/movements/:id", (req, res) => {
   if (idx === -1)
     return res.status(404).json({ message: "Movimentação não encontrada" });
 
+  const removed = db.data.movements[idx];
+  const lot_name = lotNameById(removed.lot_id);
+
   db.data.movements.splice(idx, 1);
   db.write();
   pushUpdate("movements");
@@ -526,6 +583,7 @@ app.delete("/api/movements/:id", (req, res) => {
     entity: "movement",
     action: "delete",
     ref_id: id,
+    details: { lot_id: removed.lot_id, lot_name, destination: removed.destination_name },
   });
   emitAlarm(ev);
 
