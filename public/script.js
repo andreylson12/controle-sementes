@@ -2,17 +2,52 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
+// ===== Alert infra =====
+let __audioCtx = null;
+function ensureAudioCtx() {
+  try {
+    if (!__audioCtx) __audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    if (__audioCtx.state === "suspended") __audioCtx.resume().catch(()=>{});
+  } catch(e) {}
+  return __audioCtx;
+}
+function primeAudioOnce() {
+  const ctx = ensureAudioCtx();
+  if (!ctx) return;
+  try {
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    o.start(); o.stop(ctx.currentTime + 0.02); // 20ms inaudible blip just to unlock
+  } catch(e) {}
+}
+function requestNotifPermission() {
+  if ("Notification" in window && Notification.permission !== "granted") {
+    Notification.requestPermission().catch(()=>{});
+  }
+}
+
+
 
 // Técnico chooser
 document.addEventListener("DOMContentLoaded", () => {
+  requestNotifPermission();
   const inp = document.getElementById("techName");
   const btn = document.getElementById("saveTech");
-  if (inp) inp.value = localStorage.getItem("techName") || "Técnico (anônimo)";
+  if (inp) { inp.value = localStorage.getItem("techName") || ""; inp.addEventListener("blur", ()=>localStorage.setItem("techName", (inp.value||"").trim()||"Técnico (anônimo)")); }
   if (btn) btn.addEventListener("click", () => {
     const v = (inp?.value || "").trim() || "Técnico (anônimo)";
     localStorage.setItem("techName", v);
-    alert("Técnico definido!");
+    primeAudioOnce(); requestNotifPermission(); alert("Técnico definido!");
   });
+  const bell = document.getElementById("enableAlerts");
+  if (bell) bell.addEventListener("click", ()=>{ primeAudioOnce(); requestNotifPermission(); alert("Alertas ativados!"); });
+  const filters = ["fVar","fLote","fFrom","fTo","fSaldo"];
+  filters.forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener("input", ()=>loadEstoque()); });
+  const btnF=document.getElementById("btnFiltrar"); if(btnF) btnF.addEventListener("click", ()=>loadEstoque());
+  const btnL=document.getElementById("btnLimpar"); if(btnL) btnL.addEventListener("click", ()=>{ filters.forEach(id=>{ const el=document.getElementById(id); if(!el) return; if(el.type==="checkbox") el.checked=true; else el.value=""; }); loadEstoque(); });
+  const bIn=document.getElementById("btnPDFEntradas"); if(bIn) bIn.addEventListener("click", ()=>generatePDF("entradas"));
+  const bOut=document.getElementById("btnPDFSaidas"); if(bOut) bOut.addEventListener("click", ()=>generatePDF("saidas"));
 });
 // Tabs
 $$(".tab-btn").forEach((btn) => {
@@ -103,21 +138,45 @@ async function loadMov() {
   });
 }
 
+
 async function loadEstoque() {
   // Estoque por LOTE
   const lots = await api("/api/seed-lots");
   const tb = $("#tblEstoque tbody"); 
   tb.innerHTML = "";
-  lots.sort((a,b) => (a.variety||"").localeCompare(b.variety||"") || (a.lot_code||"").localeCompare(b.lot_code||""));
-  lots.forEach(l => {
+
+  // Read filters
+  const v = ($("#fVar")?.value||"").trim().toLowerCase();
+  const l = ($("#fLote")?.value||"").trim().toLowerCase();
+  const from = $("#fFrom")?.value ? new Date($("#fFrom").value) : null;
+  const to = $("#fTo")?.value ? new Date($("#fTo").value) : null;
+  const onlySaldo = $("#fSaldo")?.checked;
+
+  const filtered = lots.filter(x => {
+    if (onlySaldo && (Number(x.balance_kg||0) <= 0)) return false;
+    if (v && !(x.variety||"").toLowerCase().includes(v)) return false;
+    if (l && !(x.lot_code||"").toLowerCase().includes(l)) return false;
+    if (from) {
+      const d = new Date(x.received_at); if (!(d >= from)) return false;
+    }
+    if (to) {
+      const d = new Date(x.received_at); if (!(d <= to)) return false;
+    }
+    return true;
+  });
+
+  filtered.sort((a,b) => (a.variety||"").localeCompare(b.variety||"") || (a.lot_code||"").localeCompare(b.lot_code||""));
+
+  filtered.forEach(lot => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${l.variety}</td>
-      <td>${l.lot_code}</td>
-      <td>${fmt(l.balance_kg)}</td>
-      <td>${fmt(l.balance_sc)}</td>
-      <td>${fmt(l.balance_bag)}</td>`;
-    if ((l.balance_kg || 0) <= 0) tr.style.opacity = "0.6"; // marca zerados
+      <td>${lot.variety}</td>
+      <td>${lot.lot_code}</td>
+      <td>${lot.received_at ? new Date(lot.received_at).toLocaleDateString() : "-"}</td>
+      <td>${fmt(lot.balance_kg)}</td>
+      <td>${fmt(lot.balance_sc)}</td>
+      <td>${fmt(lot.balance_bag)}</td>`;
+    if ((lot.balance_kg || 0) <= 0) tr.style.opacity = "0.6"; // marca zerados
     tb.appendChild(tr);
   });
 }
@@ -204,6 +263,68 @@ document.addEventListener("click", async (ev) => {
   }catch(err){ try{ const j=JSON.parse(err.message); alert(j.message||err.message); }catch{ alert(err.message); } }
 });
 
+
+// Simple print-to-PDF generator
+async function generatePDF(type){
+  const s = await api("/api/settings");
+  const perSC = s.units.kg_per_sc || 60;
+  const perBag = s.units.kg_per_bag || 1000;
+
+  const css = `
+    <style>
+      body{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; padding: 24px; color:#111 }
+      h1{ font-size:20px; margin:0 0 12px }
+      table{ width:100%; border-collapse: collapse; }
+      th,td{ border:1px solid #ddd; padding:6px 8px; font-size:12px }
+      th{ background:#f3f4f6; text-align:left }
+      tfoot td{ font-weight:600; }
+      .meta{ font-size:12px; color:#555; margin-bottom:8px }
+    </style>
+  `;
+
+  if(type==="entradas"){
+    const rows = await api("/api/seed-lots");
+    const htmlRows = rows.map(r=>`<tr>
+      <td>${r.variety||""}</td>
+      <td>${r.lot_code||""}</td>
+      <td>${r.received_at ? new Date(r.received_at).toLocaleDateString() : "-"}</td>
+      <td style="text-align:right">${(r.qty??0)} ${r.unit||""}</td>
+      <td style="text-align:right">${(r.balance_kg??0).toLocaleString()}</td>
+      <td style="text-align:right">${(r.balance_sc??0).toLocaleString()}</td>
+      <td style="text-align:right">${(r.balance_bag??0).toLocaleString()}</td>
+    </tr>`).join("");
+    const w = window.open("", "_blank");
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8">${css}</head><body>
+      <h1>Relatório de Entradas (Lotes Recebidos)</h1>
+      <div class="meta">Gerado em ${new Date().toLocaleString()}</div>
+      <table>
+        <thead><tr><th>Variedade</th><th>Lote</th><th>Recebido em</th><th>Qtd</th><th>kg saldo</th><th>sc saldo</th><th>bag saldo</th></tr></thead>
+        <tbody>${htmlRows}</tbody>
+      </table>
+    </body></html>`);
+    w.document.close(); w.focus(); w.print();
+  } else {
+    const lots = await api("/api/seed-lots");
+    const names = {}; lots.forEach(l=>names[l.id]=`${l.variety||""} • ${l.lot_code||l.id}`);
+    const rows = await api("/api/movements");
+    const htmlRows = rows.map(r=>`<tr>
+      <td>${names[r.lot_id]||r.lot_id}</td>
+      <td>${r.destination_type||""}: ${r.destination_name||""}</td>
+      <td>${r.moved_at ? new Date(r.moved_at).toLocaleDateString() : "-"}</td>
+      <td style="text-align:right">${(r.qty??0)} ${r.unit||""}</td>
+    </tr>`).join("");
+    const w = window.open("", "_blank");
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8">${css}</head><body>
+      <h1>Relatório de Saídas</h1>
+      <div class="meta">Gerado em ${new Date().toLocaleString()}</div>
+      <table>
+        <thead><tr><th>Lote</th><th>Destino</th><th>Data</th><th>Quantidade</th></tr></thead>
+        <tbody>${htmlRows}</tbody>
+      </table>
+    </body></html>`);
+    w.document.close(); w.focus(); w.print();
+  }
+}
 // realtime
 if (window.io) {
   const socket = io();
@@ -233,7 +354,7 @@ if (window.io) {
 
   function beep(){
     try {
-      const ctx = new (window.AudioContext||window.webkitAudioContext)();
+      const ctx = ensureAudioCtx(); if(!ctx) return;
       const o = ctx.createOscillator(); const g = ctx.createGain();
       o.type="sine"; o.frequency.value=880; o.connect(g); g.connect(ctx.destination);
       g.gain.setValueAtTime(0.2, ctx.currentTime);
@@ -258,6 +379,10 @@ if (window.io) {
 }
 
 (async function init(){
+  if(!localStorage.getItem("techName")){
+    try{ const n = prompt("Seu nome (técnico) para auditoria/alertas:"); if(n) localStorage.setItem("techName", n.trim()); }catch(e){}
+  }
+
   await loadCfg();
   await loadLotes();
   await loadTrat();
