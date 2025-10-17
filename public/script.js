@@ -63,7 +63,7 @@ async function loadLotes(){
   data.forEach(l=>{
     const opt=document.createElement("option");
     opt.value=l.id;
-    opt.textContent=`${lotLabel(l)} • saldo ${fmt(l.balance_kg)} kg`;
+    opt.textContent=`${lotLabel(l)} • saldo ${fmt(l.balance_bag)} bag`;
     if(selT) selT.appendChild(opt.cloneNode(true));
     if(selM) selM.appendChild(opt);
   });
