@@ -56,10 +56,11 @@
             <th>Recebido</th><th>Qtd (unidade)</th><th>Saldo (bag)</th>
             <th>Ações</th>
           </tr>
-        </thead>
+        </thead><tfoot><tr><td colspan="3"><strong>Totais (após filtro)</strong></td><td id="sumIn">0</td><td id="sumOut">0</td><td id="sumKg">0</td><td id="sumSc">0</td><td id="sumBag">0</td></tr></tfoot>
         <tbody></tbody>
       </table>
-    </section>
+    <div id="estoqueResumo" style="display:flex;gap:1rem;justify-content:flex-end;margin:.5rem 0 0;color:#94a3b8"><span id="countLots">0 lotes</span><span>|</span><span>kg: <b id="sumKg2">0</b></span><span>sc: <b id="sumSc2">0</b></span><span>bag: <b id="sumBag2">0</b></span></div>
+</section>
 
     <section id="tratamento" class="tab">
       <h2>Registrar Tratamento</h2>
@@ -97,10 +98,11 @@
             <th>Dose/100kg</th><th>Operador</th><th>Data</th><th>Obs</th>
             <th>Ações</th>
           </tr>
-        </thead>
+        </thead><tfoot><tr><td colspan="3"><strong>Totais (após filtro)</strong></td><td id="sumIn">0</td><td id="sumOut">0</td><td id="sumKg">0</td><td id="sumSc">0</td><td id="sumBag">0</td></tr></tfoot>
         <tbody></tbody>
       </table>
-    </section>
+    <div id="estoqueResumo" style="display:flex;gap:1rem;justify-content:flex-end;margin:.5rem 0 0;color:#94a3b8"><span id="countLots">0 lotes</span><span>|</span><span>kg: <b id="sumKg2">0</b></span><span>sc: <b id="sumSc2">0</b></span><span>bag: <b id="sumBag2">0</b></span></div>
+</section>
 
     <section id="saida" class="tab">
       <h2>Saída / Envio</h2>
@@ -131,18 +133,20 @@
       </form>
       <h3>Movimentações</h3>
       <table id="tblMov">
-        <thead><tr><th>Lote</th><th>Destino</th><th>Qtd (unid)</th><th>Qtd (kg)</th><th>Data</th><th>Obs</th><th>Ações</th></tr></thead>
+        <thead><tr><th>Lote</th><th>Destino</th><th>Qtd (unid)</th><th>Qtd (kg)</th><th>Data</th><th>Obs</th><th>Ações</th></tr></thead><tfoot><tr><td colspan="3"><strong>Totais (após filtro)</strong></td><td id="sumIn">0</td><td id="sumOut">0</td><td id="sumKg">0</td><td id="sumSc">0</td><td id="sumBag">0</td></tr></tfoot>
         <tbody></tbody>
       </table>
-    </section>
+    <div id="estoqueResumo" style="display:flex;gap:1rem;justify-content:flex-end;margin:.5rem 0 0;color:#94a3b8"><span id="countLots">0 lotes</span><span>|</span><span>kg: <b id="sumKg2">0</b></span><span>sc: <b id="sumSc2">0</b></span><span>bag: <b id="sumBag2">0</b></span></div>
+</section>
 
     <section id="estoque" class="tab">
       <h2>Estoque por Lote</h2>
       <table id="tblEstoque">
-        <div class="toolbar" id="estoqueToolbar" style="display:flex; gap:.5rem; align-items:end; margin:.5rem 0 1rem"><label>Variedade<br><input id="fVar" placeholder="ex.: MURALHA" /></label><label>Lote<br><input id="fLote" placeholder="ex.: PS808512-7025" /></label><label>Receb. de<br><input id="fFrom" type="date" /></label><label>até<br><input id="fTo" type="date" /></label><label style="display:flex;gap:.25rem;align-items:center"><input id="fSaldo" type="checkbox" checked/> Só com saldo</label><button id="btnFiltrar" type="button">Filtrar</button><button id="btnLimpar" type="button">Limpar</button><span style="flex:1"></span><div class="print-group" style="display:flex; gap:.5rem"><button id="btnPDFEntradas" type="button">PDF Entradas</button><button id="btnPDFSaidas" type="button">PDF Saídas</button></div></div><thead><tr><th>Variedade</th><th>Lote</th><th>Recebido em</th><th>kg</th><th>sc</th><th>bag</th></tr></thead>
+        <div class="toolbar" id="estoqueToolbar" style="display:flex; gap:.5rem; align-items:end; margin:.5rem 0 1rem"><label>Variedade<br><input id="fVar" placeholder="ex.: MURALHA" /></label><label>Lote<br><input id="fLote" placeholder="ex.: PS808512-7025" /></label><label>Receb. de<br><input id="fFrom" type="date" /></label><label>até<br><input id="fTo" type="date" /></label><label style="display:flex;gap:.25rem;align-items:center"><input id="fSaldo" type="checkbox" checked/> Só com saldo</label><button id="btnFiltrar" type="button">Filtrar</button><button id="btnLimpar" type="button">Limpar</button><span style="flex:1"></span><div class="print-group" style="display:flex; gap:.5rem"><button id="btnPDFEntradas" type="button">PDF Entradas</button><button id="btnPDFSaidas" type="button">PDF Saídas</button></div></div><thead><tr><th>Variedade</th><th>Lote</th><th>Recebido em</th><th>kg</th><th>sc</th><th>bag</th></tr></thead><tfoot><tr><td colspan="3"><strong>Totais (após filtro)</strong></td><td id="sumIn">0</td><td id="sumOut">0</td><td id="sumKg">0</td><td id="sumSc">0</td><td id="sumBag">0</td></tr></tfoot>
         <tbody></tbody>
       </table>
-    </section>
+    <div id="estoqueResumo" style="display:flex;gap:1rem;justify-content:flex-end;margin:.5rem 0 0;color:#94a3b8"><span id="countLots">0 lotes</span><span>|</span><span>kg: <b id="sumKg2">0</b></span><span>sc: <b id="sumSc2">0</b></span><span>bag: <b id="sumBag2">0</b></span></div>
+</section>
 
     <section id="config" class="tab">
       <h2>Configurações de Unidade</h2>
@@ -153,7 +157,8 @@
         </div>
         <button>Salvar Configurações</button>
       </form>
-    </section>
+    <div id="estoqueResumo" style="display:flex;gap:1rem;justify-content:flex-end;margin:.5rem 0 0;color:#94a3b8"><span id="countLots">0 lotes</span><span>|</span><span>kg: <b id="sumKg2">0</b></span><span>sc: <b id="sumSc2">0</b></span><span>bag: <b id="sumBag2">0</b></span></div>
+</section>
   </main>
 
   <footer><small>Sistema simples para Railway/GitHub • v1.5.1 (PWA + Realtime)</small></footer>
