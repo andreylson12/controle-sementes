@@ -19,6 +19,8 @@ const io = new SocketIOServer(httpServer, { cors: { origin: "*" } });
 
 app.use(cors());
 app.use(express.json());
+// Identify technician/user from header or body
+app.use((req,_res,next)=>{ req.userName = req.header("x-user") || (req.body&&req.body.by) || "Técnico (anônimo)"; next(); });
 
 const DB_PATH = process.env.DB_PATH || "./db.json";
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -29,7 +31,8 @@ const db = new LowSync(adapter, {
   seed_lots: [],
   treatments: [],
   movements: []
-});
+},
+  events: []);
 db.read(); db.write();
 
 function toKg(qty, unit, settings){ if(unit==="kg") return qty; if(unit==="sc") return qty*(settings.units.kg_per_sc||60); if(unit==="bag") return qty*(settings.units.kg_per_bag||1000); throw new Error("Unidade inválida"); }
@@ -40,6 +43,21 @@ function usedKgInMovements(lot_id){ db.read(); return db.data.movements.filter(m
 function treatedKg(lot_id){ db.read(); return db.data.treatments.filter(t=>t.lot_id===lot_id).reduce((a,t)=>a+(t.qty_kg||0),0); }
 
 function pushUpdate(type, payload = {}){ io.emit("data:update", { type, ...payload, ts: Date.now() }); }
+
+// audit + alarm helpers
+function addEvent({ by, entity, action, ref_id, details = {} }) {
+  db.read();
+  const ev = { id: nanoid(), when: new Date().toISOString(), by, entity, action, ref_id, details };
+  if(!db.data.events) db.data.events = [];
+  db.data.events.push(ev);
+  db.write();
+  return ev;
+}
+function emitAlarm(ev) {
+  const msg = `[${new Date(ev.when).toLocaleString()}] ${ev.by} ${ev.action} ${ev.entity} (${ev.ref_id})`;
+  io.emit("alarm", { ...ev, message: msg });
+}
+
 
 const lotSchema = z.object({ variety:z.string().min(1), supplier:z.string().min(1), lot_code:z.string().min(1), unit:z.enum(["kg","sc","bag"]), qty:z.number().positive(), received_at:z.string().min(1) });
 const treatmentSchema = z.object({ lot_id:z.string().min(1), product:z.string().min(1), dose_per_100kg:z.number().nonnegative().default(0), operator:z.string().min(1), treated_at:z.string().min(1), unit:z.enum(["kg","sc","bag"]), qty:z.number().positive(), notes:z.string().optional() });
@@ -63,7 +81,10 @@ app.post("/api/seed-lots", (req,res)=>{
   const lot={ id:nanoid(), ...p.data, qty_kg };
   db.read(); db.data.seed_lots.push(lot); db.write(); 
   pushUpdate("lots");
-  res.status(201).json(lot);
+  
+  const __ev = addEvent({ by: req.userName, entity: "lot", action: "create", ref_id: lot.id, details: { variety: lot.variety, lot_code: lot.lot_code } });
+  emitAlarm(__ev);
+res.status(201).json(lot);
 });
 app.get("/api/seed-lots", (_req,res)=>{
   const s=currentSettings(); db.read();
@@ -99,7 +120,10 @@ app.put("/api/seed-lots/:id", (req, res) => {
   db.data.seed_lots[idx] = { ...db.data.seed_lots[idx], ...update, qty: qty, unit: unit, qty_kg: new_qty_kg };
   db.write();
   pushUpdate("lots");
-  res.json(db.data.seed_lots[idx]);
+  
+  const __ev2 = addEvent({ by: req.userName, entity: "lot", action: "update", ref_id: id, details: { variety: db.data.seed_lots[idx].variety, lot_code: db.data.seed_lots[idx].lot_code } });
+  emitAlarm(__ev2);
+res.json(db.data.seed_lots[idx]);
 });
 app.delete("/api/seed-lots/:id", (req, res) => {
   const id = req.params.id;
@@ -114,7 +138,10 @@ app.delete("/api/seed-lots/:id", (req, res) => {
   const removed = db.data.seed_lots.splice(idx,1)[0];
   db.write();
   pushUpdate("lots");
-  res.json({ ok:true, removed_id: removed.id });
+  
+  const __ev3 = addEvent({ by: req.userName, entity: "lot", action: "delete", ref_id: removed.id });
+  emitAlarm(__ev3);
+res.json({ ok:true, removed_id: removed.id });
 });
 
 // TRATAMENTOS
@@ -125,7 +152,10 @@ app.post("/api/treatments", (req,res)=>{
   const t={ id:nanoid(), ...p.data, qty_kg };
   db.read(); db.data.treatments.push(t); db.write();
   pushUpdate("treatments"); pushUpdate("lots");
-  const lot_name = `${lot.variety} • ${lot.lot_code}`;
+  
+  const __ev4 = addEvent({ by: req.userName, entity: "treatment", action: "create", ref_id: t.id, details: { lot_id: t.lot_id, product: t.product } });
+  emitAlarm(__ev4);
+const lot_name = `${lot.variety} • ${lot.lot_code}`;
   res.status(201).json({ ...t, lot_name });
 });
 app.get("/api/treatments", (_req,res)=>{ 
@@ -165,7 +195,10 @@ app.put("/api/treatments/:id", (req, res) => {
   db.data.treatments[idx] = { ...db.data.treatments[idx], ...update, qty_kg, lot_id };
   db.write();
   pushUpdate("treatments"); pushUpdate("lots");
-  const lot = lotById(db.data.treatments[idx].lot_id);
+  
+  const __ev5 = addEvent({ by: req.userName, entity: "treatment", action: "update", ref_id: id, details: { lot_id: db.data.treatments[idx].lot_id, product: db.data.treatments[idx].product } });
+  emitAlarm(__ev5);
+const lot = lotById(db.data.treatments[idx].lot_id);
   const lot_name = lot ? `${lot.variety} • ${lot.lot_code}` : db.data.treatments[idx].lot_id;
   res.json({ ...db.data.treatments[idx], lot_name });
 });
@@ -189,7 +222,10 @@ app.delete("/api/treatments/:id", (req, res) => {
   db.data.treatments.splice(idx,1);
   db.write();
   pushUpdate("treatments"); pushUpdate("lots");
-  res.json({ ok:true });
+  
+  const __ev6 = addEvent({ by: req.userName, entity: "treatment", action: "delete", ref_id: id, details: { lot_id } });
+  emitAlarm(__ev6);
+res.json({ ok:true });
 });
 
 // MOVIMENTOS
@@ -207,7 +243,10 @@ app.post("/api/movements", (req,res)=>{
 
   const m={ id:nanoid(), ...p.data, qty_kg }; db.read(); db.data.movements.push(m); db.write(); 
   pushUpdate("movements"); pushUpdate("lots");
-  res.status(201).json(m);
+  
+  const __ev7 = addEvent({ by: req.userName, entity: "movement", action: "create", ref_id: m.id, details: { lot_id: m.lot_id, destination: m.destination_name } });
+  emitAlarm(__ev7);
+res.status(201).json(m);
 });
 app.get("/api/movements", (_req,res)=>{ db.read(); res.json(db.data.movements); });
 app.put("/api/movements/:id", (req, res) => {
@@ -247,7 +286,10 @@ app.put("/api/movements/:id", (req, res) => {
   db.data.movements[idx] = { ...db.data.movements[idx], ...update, qty_kg, lot_id };
   db.write();
   pushUpdate("movements"); pushUpdate("lots");
-  res.json(db.data.movements[idx]);
+  
+  const __ev8 = addEvent({ by: req.userName, entity: "movement", action: "update", ref_id: id, details: { lot_id: db.data.movements[idx].lot_id, destination: db.data.movements[idx].destination_name } });
+  emitAlarm(__ev8);
+res.json(db.data.movements[idx]);
 });
 app.delete("/api/movements/:id", (req, res) => {
   const id = req.params.id;
@@ -257,7 +299,10 @@ app.delete("/api/movements/:id", (req, res) => {
   db.data.movements.splice(idx,1);
   db.write();
   pushUpdate("movements"); pushUpdate("lots");
-  res.json({ ok:true });
+  
+  const __ev9 = addEvent({ by: req.userName, entity: "movement", action: "delete", ref_id: id });
+  emitAlarm(__ev9);
+res.json({ ok:true });
 });
 
 // agregado por variedade (mantido, opcional)
@@ -267,6 +312,8 @@ app.get("/api/inventory", (_req,res)=>{
   const result=Object.entries(byVariety).map(([variety,kg])=>({ variety, kg, sc:kg/(s.units.kg_per_sc||60), bag:kg/(s.units.kg_per_bag||1000) }));
   res.json(result);
 });
+
+app.get("/api/events", (req,res)=>{ db.read(); const limit = Math.max(1, Math.min(200, Number(req.query.limit)||50)); const items=[...(db.data.events||[])].reverse().slice(0,limit); res.json(items); });
 
 app.use(express.static("public"));
 const PORT = process.env.PORT || 3000;
