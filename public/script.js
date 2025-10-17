@@ -45,8 +45,6 @@ async function api(path, options = {}) {
 // ========= Índices/labels =========
 let LOT_INDEX = {};
 const lotLabel = (l) => `${l.variety} • ${l.lot_code}`;
-
-// ========= Ações de célula =========
 const btn = (label, cls = "") => `<button class="action ${cls}" data-action="${label.toLowerCase()}">${label}</button>`;
 function rowActions(){ return btn("Editar","edit")+" "+btn("Excluir","del"); }
 
@@ -151,7 +149,7 @@ async function loadEstoque() {
     if (v && !(x.variety||"").toLowerCase().includes(v)) return false;
     if (l && !(x.lot_code||"").toLowerCase().includes(l)) return false;
     if (from) { const d = new Date(x.received_at); if (!(d >= from)) return false; }
-    if (to)   { const d = new Date(x.received_at); if (!(d <= to))   return false; }
+    if (to)   { const d = new Date(x.recebido_at || x.received_at); if (!(d <= to))   return false; }
     return true;
   }).sort((a,b)=> (a.variety||"").localeCompare(b.variety||"") || (a.lot_code||"").localeCompare(b.lot_code||""));
 
@@ -265,14 +263,44 @@ document.addEventListener("submit", async (e) => {
   }
 });
 
-// ========= Tabs =========
-$$(".tab-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    $$(".tab-btn").forEach((b) => b.classList.remove("active"));
-    $$(".tab").forEach((t) => t.classList.remove("active"));
-    btn.classList.add("active");
-    document.getElementById(btn.dataset.tab).classList.add("active");
-  });
+// ========= Botões Editar/Excluir (delegação) =========
+document.addEventListener("click", async (ev) => {
+  const el = ev.target.closest("button.action"); if(!el) return;
+  const cell = el.closest("td[data-id]"); const id = cell?.dataset.id; const table = cell?.dataset.table; const action = el.dataset.action;
+
+  try{
+    if(action === "excluir"){
+      if(!confirm("Confirmar exclusão?")) return;
+      if(table==="lots") await api(`/api/seed-lots/${id}`, { method:"DELETE" });
+      else if(table==="treatments") await api(`/api/treatments/${id}`, { method:"DELETE" });
+      else if(table==="movements") await api(`/api/movements/${id}`, { method:"DELETE" });
+      await Promise.all([loadLotes(), loadTrat(), loadMov(), loadEstoque()]);
+      alert("Excluído com sucesso!");
+      return;
+    }
+    if(action === "editar"){
+      if(table==="lots"){
+        const variety = prompt("Variedade:"); const supplier = prompt("Fornecedor:");
+        const lot_code = prompt("Código do lote:"); const unit = prompt("Unidade (kg/sc/bag):","kg");
+        const qty = Number(prompt("Quantidade (na unidade):","0")); const received_at = prompt("Data (yyyy-mm-dd):");
+        await api(`/api/seed-lots/${id}`, { method:"PUT", body: JSON.stringify({ variety, supplier, lot_code, unit, qty, received_at }) });
+      }else if(table==="treatments"){
+        const product = prompt("Produto:"); const dose_per_100kg = Number(prompt("Dose por 100kg:","0"));
+        const operator = prompt("Operador:"); const treated_at = prompt("Data (yyyy-mm-dd):");
+        const unit = prompt("Unidade tratada (kg/sc/bag):","kg"); const qty = Number(prompt("Quantidade tratada:","0"));
+        const notes = prompt("Observações:");
+        await api(`/api/treatments/${id}`, { method:"PUT", body: JSON.stringify({ product, dose_per_100kg, operator, treated_at, unit, qty, notes }) });
+      }else if(table==="movements"){
+        const destination_type = prompt("Destino (lavoura/fazenda):","lavoura");
+        const destination_name = prompt("Nome do destino:");
+        const unit = prompt("Unidade (kg/sc/bag):","kg"); const qty = Number(prompt("Quantidade:","0"));
+        const moved_at = prompt("Data (yyyy-mm-dd):"); const notes = prompt("Observações:");
+        await api(`/api/movements/${id}`, { method:"PUT", body: JSON.stringify({ destination_type, destination_name, unit, qty, moved_at, notes }) });
+      }
+      await Promise.all([loadLotes(), loadTrat(), loadMov(), loadEstoque()]);
+      alert("Editado com sucesso!");
+    }
+  }catch(err){ try{ const j=JSON.parse(err.message); alert(j.message||err.message); }catch{ alert(err.message); } }
 });
 
 // ========= Config submit =========
@@ -285,7 +313,7 @@ $("#formCfg")?.addEventListener("submit", async (e) => {
   alert("Configurações salvas!");
 });
 
-// ========= Realtime =========
+// ========= Realtime / Alertas =========
 if (window.io) {
   const socket = io();
   let cooling = false;
@@ -341,8 +369,23 @@ document.addEventListener("DOMContentLoaded", () => {
       primeAudioOnce(); requestNotifPermission(); alert("Técnico definido!");
     });
   }
-  const bell = $("#enableAlerts");
-  if (bell) bell.addEventListener("click", ()=>{ primeAudioOnce(); requestNotifPermission(); alert("Alertas ativados!"); });
+  const filters = ["fVar","fLote","fFrom","fTo","fSaldo"];
+  filters.forEach(id=>{
+    const el=document.getElementById(id);
+    if(!el) return;
+    const ev = (el.tagName==="INPUT" && (el.type==="text"||el.type==="date")) ? "input" : "change";
+    el.addEventListener(ev, ()=>loadEstoque());
+  });
+  $("#btnFiltrar")?.addEventListener("click", ()=>loadEstoque());
+  $("#btnLimpar")?.addEventListener("click", ()=>{
+    const ids = ["fVar","fLote","fFrom","fTo","fSaldo"];
+    ids.forEach(id=>{
+      const el=document.getElementById(id);
+      if(!el) return;
+      if(el.type==="checkbox") el.checked=true; else el.value="";
+    });
+    loadEstoque();
+  });
 
   // Primeiro carregamento
   (async () => {
