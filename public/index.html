@@ -19,7 +19,13 @@
       <button class="tab-btn" data-tab="estoque">Estoque</button>
       <button class="tab-btn" data-tab="config">Configurações</button>
     </nav>
-  </header>
+  <div style="margin-left:auto; display:flex; gap:.5rem; align-items:center">
+  <label style="font-size:.9rem">Técnico:
+    <input id="techName" placeholder="Seu nome" style="padding:.25rem .5rem" />
+  </label>
+  <button id="saveTech" type="button">Usar</button>
+</div>
+</header>
 
   <main>
     <section id="cadastro" class="tab active">
@@ -158,5 +164,6 @@
       navigator.serviceWorker.register("serviceWorker.js?v=1.5.1").catch(console.error);
     }
   </script>
+<div id="toasts" style="position:fixed; right:1rem; bottom:1rem; z-index:9999"></div>
 </body>
 </html>
