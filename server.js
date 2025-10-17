@@ -85,17 +85,26 @@ app.post("/api/seed-lots", (req,res)=>{
   emitAlarm(__ev);
 res.status(201).json(lot);
 });
+
 app.get("/api/seed-lots", (_req,res)=>{
-  const s=currentSettings(); db.read();
-  const lots=db.data.seed_lots.map(l=>{
-    const used=usedKgInMovements(l.id);
-    const balance_kg=Math.max(0,(l.qty_kg||0)-used);
-    const treated_total_kg = treatedKg(l.id);
-    const treated_available_kg = Math.max(0, treated_total_kg - used);
-    return {...l, balance_kg, balance_sc:fromKg(balance_kg,"sc",s), balance_bag:fromKg(balance_kg,"bag",s), treated_total_kg, treated_available_kg};
+  db.read();
+  const s = currentSettings(); const kgPerSc=s.units.kg_per_sc||60, kgPerBag=s.units.kg_per_bag||1000;
+  const rows = db.data.seed_lots.map(l=>{
+    const entrada_kg = Number(l.qty_kg||0);
+    const saida_kg   = Number(usedKgInMovements(l.id)||0);
+    const saldo_kg   = Math.max(0, entrada_kg - saida_kg);
+    const tratado_kg = db.data.treatments.filter(t=>t.lot_id===l.id).reduce((a,t)=>a+(t.qty_kg||0),0);
+    return {
+      ...l,
+      entrada_kg, entrada_sc: entrada_kg/kgPerSc, entrada_bag: entrada_kg/kgPerBag,
+      saida_kg,   saida_sc:   saida_kg/kgPerSc,   saida_bag:   saida_kg/kgPerBag,
+      balance_kg: saldo_kg,   balance_sc: saldo_kg/kgPerSc,    balance_bag: saldo_kg/kgPerBag,
+      treated_kg: tratado_kg, treated_sc: tratado_kg/kgPerSc,  treated_bag: tratado_kg/kgPerBag,
+    };
   });
-  res.json(lots);
+  res.json(rows);
 });
+
 app.put("/api/seed-lots/:id", (req, res) => {
   const id = req.params.id;
   db.read();
