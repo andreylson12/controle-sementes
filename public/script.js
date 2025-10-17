@@ -2,6 +2,18 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
+
+// Técnico chooser
+document.addEventListener("DOMContentLoaded", () => {
+  const inp = document.getElementById("techName");
+  const btn = document.getElementById("saveTech");
+  if (inp) inp.value = localStorage.getItem("techName") || "Técnico (anônimo)";
+  if (btn) btn.addEventListener("click", () => {
+    const v = (inp?.value || "").trim() || "Técnico (anônimo)";
+    localStorage.setItem("techName", v);
+    alert("Técnico definido!");
+  });
+});
 // Tabs
 $$(".tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -13,7 +25,7 @@ $$(".tab-btn").forEach((btn) => {
 });
 
 async function api(path, options = {}) {
-  const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
+  const res = await fetch(path, { headers: { "Content-Type": "application/json", "x-user": (localStorage.getItem("techName") || "Técnico (anônimo)") }, ...options });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -213,6 +225,36 @@ if (window.io) {
     }, 300);
   }
   socket.on("data:update", ({ type }) => refreshFor(type));
+
+  // Notifications permission
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission().catch(() => {});
+  }
+
+  function beep(){
+    try {
+      const ctx = new (window.AudioContext||window.webkitAudioContext)();
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type="sine"; o.frequency.value=880; o.connect(g); g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.2, ctx.currentTime);
+      o.start(); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.6); o.stop(ctx.currentTime+0.6);
+    } catch(e) {}
+  }
+  function toast(msg){
+    const box=document.getElementById("toasts"); if(!box) return;
+    const el=document.createElement("div");
+    el.textContent = msg;
+    el.style.cssText="background:#111;color:#fff;padding:.6rem .8rem;margin-top:.5rem;border-radius:.5rem;box-shadow:0 4px 16px rgba(0,0,0,.25);max-width:360px";
+    box.appendChild(el); setTimeout(()=>el.remove(), 8000);
+  }
+
+  socket.on("alarm", (ev) => {
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification("Controle de Sementes", { body: ev.message });
+    }
+    toast(ev.message);
+    beep();
+  });
 }
 
 (async function init(){
