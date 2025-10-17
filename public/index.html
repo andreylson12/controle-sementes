@@ -24,6 +24,7 @@
     <input id="techName" placeholder="Seu nome" style="padding:.25rem .5rem" />
   </label>
   <button id="saveTech" type="button">Usar</button>
+<button id="enableAlerts" type="button" title="Ativar notificações e som">🔔 Ativar alertas</button>
 </div>
 </header>
 
@@ -138,7 +139,7 @@
     <section id="estoque" class="tab">
       <h2>Estoque por Lote</h2>
       <table id="tblEstoque">
-        <thead><tr><th>Variedade</th><th>Lote</th><th>kg</th><th>sc</th><th>bag</th></tr></thead>
+        <div class="toolbar" id="estoqueToolbar" style="display:flex; gap:.5rem; align-items:end; margin:.5rem 0 1rem"><label>Variedade<br><input id="fVar" placeholder="ex.: MURALHA" /></label><label>Lote<br><input id="fLote" placeholder="ex.: PS808512-7025" /></label><label>Receb. de<br><input id="fFrom" type="date" /></label><label>até<br><input id="fTo" type="date" /></label><label style="display:flex;gap:.25rem;align-items:center"><input id="fSaldo" type="checkbox" checked/> Só com saldo</label><button id="btnFiltrar" type="button">Filtrar</button><button id="btnLimpar" type="button">Limpar</button><span style="flex:1"></span><div class="print-group" style="display:flex; gap:.5rem"><button id="btnPDFEntradas" type="button">PDF Entradas</button><button id="btnPDFSaidas" type="button">PDF Saídas</button></div></div><thead><tr><th>Variedade</th><th>Lote</th><th>Recebido em</th><th>kg</th><th>sc</th><th>bag</th></tr></thead>
         <tbody></tbody>
       </table>
     </section>
